@@ -13,6 +13,7 @@ build/
 .planning/
 .cache/
 test/
+.superpowers/
 gallery/
 *.log
 *.db-shm
