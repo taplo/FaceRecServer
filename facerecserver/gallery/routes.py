@@ -3,13 +3,14 @@ import os
 import zipfile
 import tempfile
 import logging
+import shutil
+import requests
 import numpy as np
 from PIL import Image
 from fastapi import APIRouter, UploadFile, File, Request, HTTPException, Query
 
 from facerecserver.api.schemas import ApiResponse
 from facerecserver.gallery.repository import GalleryRepository
-from facerecserver.gallery.schemas import GalleryAddRequest
 from facerecserver.face_recognition.utils import base64_to_image, load_image
 from facerecserver.face_detection.detector import FaceNotFoundError
 
@@ -31,31 +32,38 @@ def _get_extractor(request: Request):
     return extractor
 
 
+def _make_image_from_bytes(data: bytes) -> np.ndarray:
+    return np.array(Image.open(io.BytesIO(data)).convert("RGB"))
+
+
 @router.post("", response_model=ApiResponse)
-async def add_face(
-    request: Request,
-    file: UploadFile | None = File(None),
-    body: GalleryAddRequest | None = None,
-):
+async def add_face(request: Request):
     repo = _get_repo(request)
     extractor = _get_extractor(request)
 
     try:
-        if file is not None:
-            contents = await file.read()
-            image = np.array(Image.open(io.BytesIO(contents)).convert("RGB"))
-            name = os.path.splitext(file.filename or "unknown")[0]
-        elif body and body.image:
-            image = base64_to_image(body.image)
-            name = body.name or "unknown"
-        elif body and body.image_url:
-            import requests as http_requests
-            resp = http_requests.get(body.image_url, timeout=30)
-            resp.raise_for_status()
-            image = np.array(Image.open(io.BytesIO(resp.content)).convert("RGB"))
-            name = body.name or "unknown"
+        content_type = (request.headers.get("content-type") or "").lower()
+
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            up_file = form.get("file")
+            if up_file is None or not hasattr(up_file, "read"):
+                return ApiResponse(code=400, message="请上传图片文件", data=None)
+            contents = await up_file.read()
+            image = _make_image_from_bytes(contents)
+            name = os.path.splitext(up_file.filename or "unknown")[0]
         else:
-            return ApiResponse(code=400, message="请提供图片 (file, image, 或 image_url)", data=None)
+            body = await request.json()
+            if body.get("image"):
+                image = base64_to_image(body["image"])
+                name = body.get("name", "unknown")
+            elif body.get("image_url"):
+                resp = requests.get(body["image_url"], timeout=30)
+                resp.raise_for_status()
+                image = _make_image_from_bytes(resp.content)
+                name = body.get("name", "unknown")
+            else:
+                return ApiResponse(code=400, message="请提供图片 (file, image, 或 image_url)", data=None)
 
         embedding = extractor.extract(image)
         face_id = repo.add(embedding, name)
@@ -82,9 +90,13 @@ async def add_faces_batch(request: Request, file: UploadFile = File(...)):
     temp_dir = tempfile.mkdtemp()
     try:
         with zipfile.ZipFile(io.BytesIO(contents)) as zf:
+            for name in zf.namelist():
+                dest = os.path.abspath(os.path.join(temp_dir, name))
+                if not dest.startswith(os.path.abspath(temp_dir)):
+                    raise ValueError(f"非法的 ZIP 路径: {name}")
             zf.extractall(temp_dir)
 
-        image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+        image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
         image_paths = []
         for root, _dirs, files in os.walk(temp_dir):
             for fname in files:
@@ -110,14 +122,14 @@ async def add_faces_batch(request: Request, file: UploadFile = File(...)):
             stats.failed += 1
             stats.failures.append(err)
 
+        total_input = len(embeddings) + len(errors)
         return ApiResponse(code=0, message="success", data={
-            "total": stats.total + len(errors),
+            "total": total_input,
             "succeeded": stats.succeeded,
             "failed": stats.failed,
             "failures": stats.failures,
         })
     finally:
-        import shutil
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
