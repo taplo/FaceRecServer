@@ -163,3 +163,42 @@ async def clear_gallery(request: Request):
     repo = _get_repo(request)
     repo.clear()
     return ApiResponse(code=0, message="success", data=None)
+
+
+@router.post("/recognize", response_model=ApiResponse)
+async def recognize_face(request: Request, top_k: int = Query(5, ge=1, le=50)):
+    repo = _get_repo(request)
+    extractor = _get_extractor(request)
+
+    try:
+        content_type = (request.headers.get("content-type") or "").lower()
+
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            up_file = form.get("file")
+            if up_file is None or not hasattr(up_file, "read"):
+                return ApiResponse(code=400, message="请上传图片文件", data=None)
+            contents = await up_file.read()
+            image = _make_image_from_bytes(contents)
+        else:
+            body = await request.json()
+            if body.get("image"):
+                image = base64_to_image(body["image"])
+            elif body.get("image_url"):
+                resp = requests.get(body["image_url"], timeout=30)
+                resp.raise_for_status()
+                image = _make_image_from_bytes(resp.content)
+            else:
+                return ApiResponse(code=400, message="请提供图片 (file, image, 或 image_url)", data=None)
+
+        embedding = extractor.extract(image)
+        results = repo.search(embedding, top_k)
+        return ApiResponse(code=0, message="success", data={"results": results})
+
+    except FaceNotFoundError as e:
+        return ApiResponse(code=1001, message=str(e), data=None)
+    except ValueError as e:
+        return ApiResponse(code=1002, message=str(e), data=None)
+    except Exception as e:
+        logger.exception("人脸识别失败")
+        return ApiResponse(code=-1, message=f"处理失败: {str(e)}", data=None)
