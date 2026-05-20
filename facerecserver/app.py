@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from facerecserver.api.routes import router
+from facerecserver.gallery.routes import router as gallery_router
+from facerecserver.gallery.repository import GalleryRepository
 from facerecserver.face_recognition.embedding import FaceEmbeddingExtractor
 from facerecserver.config import AppConfig
 
@@ -13,12 +15,18 @@ async def lifespan(app: FastAPI):
     try:
         extractor = FaceEmbeddingExtractor(config)
         app.state.extractor = extractor
+        repo = GalleryRepository(config.gallery.db_dir, config.gallery.db_name)
+        app.state.gallery_repo = repo
         print(f"[启动] 模型已加载: {config.model.name} on {config.device}")
     except Exception as e:
         print(f"[警告] 模型加载失败: {e}")
         print("[提示] API 端点将返回模型未加载错误，请先下载模型")
         app.state.extractor = None
+        app.state.gallery_repo = None
     yield
+    repo = getattr(app.state, "gallery_repo", None)
+    if repo:
+        repo.close()
     print("[关闭] 服务停止")
 
 
@@ -39,4 +47,5 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     )
 
     app.include_router(router)
+    app.include_router(gallery_router)
     return app
