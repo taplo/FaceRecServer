@@ -150,15 +150,22 @@ class GalleryRepository:
             if faiss_id == -1:
                 continue
             row = self._conn.execute(
-                "SELECT face_id, name FROM faces WHERE id = ?", (int(faiss_id),)
+                "SELECT face_id, name, image_path FROM faces WHERE id = ?", (int(faiss_id),)
             ).fetchone()
             if row:
                 results.append({
                     "face_id": row[0],
                     "name": row[1],
                     "score": float(score),
+                    "image_url": f"/api/v1/gallery/{row[0]}/image" if row[2] else None,
                 })
         return results
+
+    def get_image_path(self, face_id: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT image_path FROM faces WHERE face_id = ?", (face_id,)
+        ).fetchone()
+        return row[0] if row else None
 
     def get_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]

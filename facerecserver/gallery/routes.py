@@ -8,6 +8,7 @@ import requests
 import numpy as np
 from PIL import Image
 from fastapi import APIRouter, UploadFile, File, Request, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from facerecserver.api.schemas import ApiResponse
 from facerecserver.gallery.repository import GalleryRepository
@@ -150,6 +151,18 @@ async def list_faces(
         "page": page,
         "page_size": page_size,
     })
+
+
+@router.get("/{face_id}/image")
+async def get_face_image(request: Request, face_id: str):
+    repo = _get_repo(request)
+    image_path = repo.get_image_path(face_id)
+    if image_path is None:
+        raise HTTPException(status_code=404, detail={"code": 2002, "message": "图片不存在"})
+    abs_path = os.path.join(repo.gallery_dir, image_path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail={"code": 2002, "message": "图片文件不存在"})
+    return FileResponse(abs_path, media_type="image/jpeg")
 
 
 @router.delete("/{face_id}", response_model=ApiResponse)
