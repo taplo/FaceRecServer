@@ -9,6 +9,7 @@ import sys
 import zipfile
 import time
 import io
+import csv
 import logging
 
 import numpy as np
@@ -21,7 +22,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Ensure project root is on path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -30,8 +30,7 @@ os.chdir(PROJECT_ROOT)
 ZIP_PATH = r"D:\faces.zip"
 GALLERY_DIR = "gallery"
 DB_NAME = "faces"
-
-BATCH_SIZE = 100
+REPORT_PATH = "gallery/import_report.csv"
 
 
 def main():
@@ -42,13 +41,17 @@ def main():
     from facerecserver.config import load_config
 
     config = load_config()
+    config.preprocess.do_quality_check = False
+    config.preprocess.do_alignment = True
     extractor = FaceEmbeddingExtractor(config)
     logger.info("模型加载完成")
 
     from facerecserver.gallery.repository import GalleryRepository
     repo = GalleryRepository(GALLERY_DIR, DB_NAME)
-    existing = repo.get_count()
-    logger.info("当前底库已有 %d 条记录", existing)
+
+    logger.info("清空现有底库...")
+    repo.clear()
+    logger.info("底库已清空")
 
     with zipfile.ZipFile(ZIP_PATH, "r", metadata_encoding="gbk") as zf:
         names = zf.namelist()
@@ -59,12 +62,12 @@ def main():
         ]
         logger.info("ZIP 中共 %d 个图片文件", len(image_entries))
 
-        succeeded = 0
-        failed = 0
-        skipped = 0
+        records = []
         start_time = time.time()
 
         for idx, entry_name in enumerate(image_entries, 1):
+            result = {"filename": entry_name, "status": "", "reason": "", "face_id": ""}
+
             try:
                 basename = os.path.splitext(os.path.basename(entry_name))[0]
                 if "-" in basename:
@@ -76,27 +79,50 @@ def main():
                 image = np.array(Image.open(io.BytesIO(raw)).convert("RGB"))
 
                 embedding = extractor.extract(image)
-                repo.add(embedding, person_name, entry_name)
-                succeeded += 1
+                face_id = repo.add(embedding, person_name, entry_name)
+                result["status"] = "success"
+                result["face_id"] = face_id
 
             except Exception as e:
-                failed += 1
-                logger.error("失败 [%d/%d] %s: %s", idx, len(image_entries), entry_name, e)
+                result["status"] = "failed"
+                result["reason"] = str(e)
+
+            records.append(result)
 
             if idx % 10 == 0 or idx == len(image_entries):
                 elapsed = time.time() - start_time
+                ok = sum(1 for r in records if r["status"] == "success")
+                fail = sum(1 for r in records if r["status"] == "failed")
                 rate = idx / elapsed if elapsed > 0 else 0
                 logger.info(
-                    "[%d/%d] 成功=%d 失败=%d 跳过=%d | %.1f img/s | 已用 %.0fs",
-                    idx, len(image_entries), succeeded, failed, skipped, rate, elapsed,
+                    "[%d/%d] 成功=%d 失败=%d | %.1f img/s | 已用 %.0fs",
+                    idx, len(image_entries), ok, fail, rate, elapsed,
                 )
 
         elapsed = time.time() - start_time
-        total_processed = succeeded + failed
+        ok = sum(1 for r in records if r["status"] == "success")
+        fail = sum(1 for r in records if r["status"] == "failed")
+
+        # 写入 CSV 报表
+        with open(REPORT_PATH, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=["filename", "status", "reason", "face_id"])
+            writer.writeheader()
+            writer.writerows(records)
+
         logger.info("=" * 50)
         logger.info("导入完成!")
-        logger.info("总计: %d | 成功: %d | 失败: %d | 跳过: %d", total_processed, succeeded, failed, skipped)
+        logger.info("总计: %d | 成功: %d | 失败: %d | 成功率: %.1f%%",
+                    len(image_entries), ok, fail, ok / len(image_entries) * 100 if image_entries else 0)
         logger.info("耗时: %.0fs (%.1f 分钟)", elapsed, elapsed / 60)
+        logger.info("报表已保存到: %s", REPORT_PATH)
+
+        # 打印统计摘要
+        logger.info("=" * 50)
+        logger.info("失败原因统计:")
+        from collections import Counter
+        reasons = Counter(r["reason"] for r in records if r["status"] == "failed")
+        for reason, count in reasons.most_common(10):
+            logger.info("  %s: %d", reason, count)
 
     repo.close()
 
