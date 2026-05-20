@@ -59,30 +59,30 @@ Deferred to future release.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GALLERY-01 | Phase N | Pending |
-| GALLERY-02 | Phase N | Pending |
-| GALLERY-03 | Phase N | Pending |
-| GALLERY-04 | Phase N | Pending |
-| GALLERY-05 | Phase N | Pending |
-| GALLERY-06 | Phase N | Pending |
-| API-01 | Phase N | Pending |
-| API-02 | Phase N | Pending |
-| API-03 | Phase N | Pending |
-| API-04 | Phase N | Pending |
-| API-05 | Phase N | Pending |
-| WEB-01 | Phase N | Pending |
-| WEB-02 | Phase N | Pending |
-| WEB-03 | Phase N | Pending |
-| WEB-04 | Phase N | Pending |
-| WEB-05 | Phase N | Pending |
-| SYS-01 | Phase N | Pending |
-| SYS-02 | Phase N | Pending |
-| SYS-03 | Phase N | Pending |
+| API-01 | Phase 1 | Pending |
+| SYS-02 | Phase 1 | Pending |
+| SYS-03 | Phase 1 | Pending |
+| GALLERY-01 | Phase 2 | Pending |
+| GALLERY-02 | Phase 2 | Pending |
+| GALLERY-03 | Phase 2 | Pending |
+| GALLERY-04 | Phase 2 | Pending |
+| GALLERY-05 | Phase 2 | Pending |
+| GALLERY-06 | Phase 2 | Pending |
+| SYS-01 | Phase 2 | Pending |
+| API-02 | Phase 3 | Pending |
+| API-03 | Phase 3 | Pending |
+| API-04 | Phase 3 | Pending |
+| API-05 | Phase 3 | Pending |
+| WEB-01 | Phase 4 | Pending |
+| WEB-02 | Phase 4 | Pending |
+| WEB-03 | Phase 4 | Pending |
+| WEB-04 | Phase 4 | Pending |
+| WEB-05 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19 ⚠️
+- Mapped to phases: 19
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-20*
