@@ -12,17 +12,20 @@ from facerecserver.config import AppConfig
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config: AppConfig = app.state.config
+    app.state.extractor = None
+    app.state.gallery_repo = None
     try:
         extractor = FaceEmbeddingExtractor(config)
         app.state.extractor = extractor
-        repo = GalleryRepository(config.gallery.db_dir, config.gallery.db_name)
-        app.state.gallery_repo = repo
         print(f"[启动] 模型已加载: {config.model.name} on {config.device}")
     except Exception as e:
         print(f"[警告] 模型加载失败: {e}")
         print("[提示] API 端点将返回模型未加载错误，请先下载模型")
-        app.state.extractor = None
-        app.state.gallery_repo = None
+    try:
+        repo = GalleryRepository(config.gallery.db_dir, config.gallery.db_name)
+        app.state.gallery_repo = repo
+    except Exception as e:
+        print(f"[警告] 底库初始化失败: {e}")
     yield
     repo = getattr(app.state, "gallery_repo", None)
     if repo:
