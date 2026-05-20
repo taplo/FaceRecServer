@@ -11,3 +11,7 @@ build/
 .planning/
 .cache/
 test/
+gallery/
+*.log
+*.db-shm
+*.db-wal
