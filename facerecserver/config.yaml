@@ -17,3 +17,9 @@ preprocess:
 server:
   host: 0.0.0.0
   port: 8000
+
+gallery:
+  db_dir: gallery
+  db_name: faces
+  page_size_default: 20
+  page_size_max: 100

@@ -33,11 +33,20 @@ class ServerConfig:
 
 
 @dataclass
+class GalleryConfig:
+    db_dir: str = "gallery"
+    db_name: str = "faces"
+    page_size_default: int = 20
+    page_size_max: int = 100
+
+
+@dataclass
 class AppConfig:
     model: ModelConfig = field(default_factory=ModelConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
+    gallery: GalleryConfig = field(default_factory=GalleryConfig)
     device: str = "cpu"
 
 
@@ -72,6 +81,12 @@ def load_config(path: str | None = None) -> AppConfig:
     s = raw.get("server", {})
     cfg.server.host = s.get("host", cfg.server.host)
     cfg.server.port = s.get("port", cfg.server.port)
+
+    g = raw.get("gallery", {})
+    cfg.gallery.db_dir = g.get("db_dir", cfg.gallery.db_dir)
+    cfg.gallery.db_name = g.get("db_name", cfg.gallery.db_name)
+    cfg.gallery.page_size_default = g.get("page_size_default", cfg.gallery.page_size_default)
+    cfg.gallery.page_size_max = g.get("page_size_max", cfg.gallery.page_size_max)
 
     cfg.device = "cuda" if torch.cuda.is_available() else "cpu"
 
