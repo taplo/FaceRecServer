@@ -36,35 +36,35 @@ def _make_image_from_bytes(data: bytes) -> np.ndarray:
     return np.array(Image.open(io.BytesIO(data)).convert("RGB"))
 
 
+async def _parse_image_from_request(request: Request) -> tuple[np.ndarray, str | None]:
+    """Parse image and optional name from request (multipart or JSON)."""
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        up_file = form.get("file")
+        if up_file is None or not hasattr(up_file, "read"):
+            raise ValueError("请上传图片文件")
+        contents = await up_file.read()
+        name = os.path.splitext(up_file.filename or "unknown")[0]
+        return _make_image_from_bytes(contents), name
+    body = await request.json()
+    if body.get("image"):
+        return base64_to_image(body["image"]), body.get("name")
+    if body.get("image_url"):
+        resp = requests.get(body["image_url"], timeout=30)
+        resp.raise_for_status()
+        return _make_image_from_bytes(resp.content), body.get("name")
+    raise ValueError("请提供图片 (file, image, 或 image_url)")
+
+
 @router.post("", response_model=ApiResponse)
 async def add_face(request: Request):
     repo = _get_repo(request)
     extractor = _get_extractor(request)
 
     try:
-        content_type = (request.headers.get("content-type") or "").lower()
-
-        if "multipart/form-data" in content_type:
-            form = await request.form()
-            up_file = form.get("file")
-            if up_file is None or not hasattr(up_file, "read"):
-                return ApiResponse(code=400, message="请上传图片文件", data=None)
-            contents = await up_file.read()
-            image = _make_image_from_bytes(contents)
-            name = os.path.splitext(up_file.filename or "unknown")[0]
-        else:
-            body = await request.json()
-            if body.get("image"):
-                image = base64_to_image(body["image"])
-                name = body.get("name", "unknown")
-            elif body.get("image_url"):
-                resp = requests.get(body["image_url"], timeout=30)
-                resp.raise_for_status()
-                image = _make_image_from_bytes(resp.content)
-                name = body.get("name", "unknown")
-            else:
-                return ApiResponse(code=400, message="请提供图片 (file, image, 或 image_url)", data=None)
-
+        image, name = await _parse_image_from_request(request)
+        name = name or "unknown"
         embedding = extractor.extract(image)
         face_id = repo.add(embedding, name)
         return ApiResponse(code=0, message="success", data={"face_id": face_id, "name": name})
@@ -171,26 +171,7 @@ async def recognize_face(request: Request, top_k: int = Query(5, ge=1, le=50)):
     extractor = _get_extractor(request)
 
     try:
-        content_type = (request.headers.get("content-type") or "").lower()
-
-        if "multipart/form-data" in content_type:
-            form = await request.form()
-            up_file = form.get("file")
-            if up_file is None or not hasattr(up_file, "read"):
-                return ApiResponse(code=400, message="请上传图片文件", data=None)
-            contents = await up_file.read()
-            image = _make_image_from_bytes(contents)
-        else:
-            body = await request.json()
-            if body.get("image"):
-                image = base64_to_image(body["image"])
-            elif body.get("image_url"):
-                resp = requests.get(body["image_url"], timeout=30)
-                resp.raise_for_status()
-                image = _make_image_from_bytes(resp.content)
-            else:
-                return ApiResponse(code=400, message="请提供图片 (file, image, 或 image_url)", data=None)
-
+        image, _ = await _parse_image_from_request(request)
         embedding = extractor.extract(image)
         results = repo.search(embedding, top_k)
         return ApiResponse(code=0, message="success", data={"results": results})
