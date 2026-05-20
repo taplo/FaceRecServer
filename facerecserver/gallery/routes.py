@@ -66,7 +66,7 @@ async def add_face(request: Request):
         image, name = await _parse_image_from_request(request)
         name = name or "unknown"
         embedding = extractor.extract(image)
-        face_id = repo.add(embedding, name)
+        face_id = repo.add(embedding, name, image=image)
         return ApiResponse(code=0, message="success", data={"face_id": face_id, "name": name})
 
     except FaceNotFoundError as e:
@@ -105,6 +105,7 @@ async def add_faces_batch(request: Request, file: UploadFile = File(...)):
 
         embeddings = []
         names = []
+        images = []
         errors = []
         for img_path in image_paths:
             try:
@@ -112,12 +113,13 @@ async def add_faces_batch(request: Request, file: UploadFile = File(...)):
                 emb = extractor.extract(image)
                 embeddings.append(emb)
                 names.append(os.path.splitext(os.path.basename(img_path))[0])
+                images.append(image)
             except FaceNotFoundError:
                 errors.append({"file": os.path.basename(img_path), "reason": "未检测到人脸"})
             except Exception as e:
                 errors.append({"file": os.path.basename(img_path), "reason": str(e)})
 
-        stats = repo.add_batch(embeddings, names)
+        stats = repo.add_batch(embeddings, names, images=images)
         for err in errors:
             stats.failed += 1
             stats.failures.append(err)

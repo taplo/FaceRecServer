@@ -3,6 +3,7 @@ import sqlite3
 import uuid
 import numpy as np
 import faiss
+from PIL import Image
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
@@ -28,6 +29,7 @@ class GalleryRepository:
 
     def __init__(self, db_dir: str, db_name: str):
         os.makedirs(db_dir, exist_ok=True)
+        self.gallery_dir = db_dir
         self.db_path = os.path.join(db_dir, f"{db_name}.db")
         self.index_path = os.path.join(db_dir, f"{db_name}.faiss")
         self._conn = sqlite3.connect(self.db_path)
@@ -64,10 +66,18 @@ class GalleryRepository:
     def _save_index(self) -> None:
         faiss.write_index(self._index, self.index_path)
 
-    def add(self, embedding: np.ndarray, name: str, image_path: str = "") -> str:
+    def add(self, embedding: np.ndarray, name: str, image: np.ndarray | None = None, image_path: str = "") -> str:
         face_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         normalized = embedding / np.linalg.norm(embedding)
+
+        if image is not None:
+            faces_dir = os.path.join(self.gallery_dir, "faces")
+            os.makedirs(faces_dir, exist_ok=True)
+            save_path = os.path.join(faces_dir, f"{face_id}.jpg")
+            Image.fromarray(image).save(save_path, "JPEG")
+            image_path = f"faces/{face_id}.jpg"
+
         cursor = self._conn.execute(
             "INSERT INTO faces (face_id, name, created_at, image_path) VALUES (?, ?, ?, ?)",
             (face_id, name, now, image_path),
@@ -78,12 +88,13 @@ class GalleryRepository:
         self._save_index()
         return face_id
 
-    def add_batch(self, embeddings: list, names: list, image_paths: list | None = None) -> GalleryStats:
+    def add_batch(self, embeddings: list, names: list, image_paths: list | None = None, images: list | None = None) -> GalleryStats:
         stats = GalleryStats(total=len(embeddings))
         for i, (emb, name) in enumerate(zip(embeddings, names)):
             try:
+                img = images[i] if images else None
                 path = image_paths[i] if image_paths else ""
-                self.add(emb, name, path)
+                self.add(emb, name, image=img, image_path=path)
                 stats.succeeded += 1
             except Exception as e:
                 stats.failed += 1
