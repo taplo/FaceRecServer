@@ -1,3 +1,4 @@
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ from facerecserver.config import AppConfig
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.start_time = time.time()
     config: AppConfig = app.state.config
     app.state.extractor = None
     app.state.gallery_repo = None

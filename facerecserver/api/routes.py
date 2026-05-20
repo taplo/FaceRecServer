@@ -8,10 +8,18 @@ from facerecserver.api.schemas import EmbeddingRequest, ApiResponse
 from facerecserver.face_recognition.embedding import FaceEmbeddingExtractor
 from facerecserver.face_recognition.utils import base64_to_image
 from facerecserver.face_detection.detector import FaceNotFoundError
+from facerecserver.gallery.repository import GalleryRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
+
+
+def _get_gallery_repo(request: Request) -> GalleryRepository:
+    repo = getattr(request.app.state, "gallery_repo", None)
+    if repo is None:
+        raise HTTPException(status_code=503, detail={"code": 5000, "message": "底库未初始化"})
+    return repo
 
 
 def _get_extractor(request: Request) -> FaceEmbeddingExtractor:
@@ -57,3 +65,18 @@ async def create_embedding(
     except Exception as e:
         logger.exception("处理请求时出错")
         return ApiResponse(code=-1, message=f"处理失败: {str(e)}", data=None)
+
+
+@router.get("/stats", response_model=ApiResponse)
+async def get_stats(request: Request):
+    import time
+    repo = _get_gallery_repo(request)
+    gallery_stats = repo.get_stats()
+    data = {
+        "gallery": gallery_stats,
+        "server": {
+            "uptime_seconds": int(time.time() - request.app.state.start_time) if hasattr(request.app.state, "start_time") else 0,
+            "device": request.app.state.config.device,
+        },
+    }
+    return ApiResponse(code=0, message="success", data=data)

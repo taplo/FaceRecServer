@@ -170,5 +170,13 @@ class GalleryRepository:
     def get_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
 
+    def get_stats(self) -> dict:
+        total = self._conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
+        return {
+            "total_faces": total,
+            "index_size": self._index.ntotal,
+            "dimension": self.DIM,
+        }
+
     def close(self) -> None:
         self._conn.close()
