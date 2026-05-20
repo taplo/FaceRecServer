@@ -126,6 +126,29 @@ class GalleryRepository:
         items = [FaceRecord(face_id=r[0], name=r[1], created_at=r[2], image_path=r[3]) for r in rows]
         return items, count
 
+    def search(self, embedding: np.ndarray, top_k: int = 5) -> list[dict]:
+        if self._index.ntotal == 0:
+            return []
+        if top_k < 1:
+            top_k = 1
+        normalized = embedding / np.linalg.norm(embedding)
+        query = normalized.reshape(1, -1).astype(np.float32)
+        distances, indices = self._index.search(query, top_k)
+        results = []
+        for score, faiss_id in zip(distances[0], indices[0]):
+            if faiss_id == -1:
+                continue
+            row = self._conn.execute(
+                "SELECT face_id, name FROM faces WHERE id = ?", (int(faiss_id),)
+            ).fetchone()
+            if row:
+                results.append({
+                    "face_id": row[0],
+                    "name": row[1],
+                    "score": float(score),
+                })
+        return results
+
     def get_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
 
