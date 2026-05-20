@@ -1,0 +1,12 @@
+models/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.egg-info/
+*.egg-info
+dist/
+build/
+.planning/
+.cache/

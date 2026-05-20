@@ -1,7 +1,27 @@
 [project]
 name = "facerecserver"
 version = "0.1.0"
-description = "Add your description here"
+description = "基于 PETALface (WACV 2025) 算法的人脸识别 API 服务"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "fastapi>=0.104",
+    "uvicorn>=0.24",
+    "python-multipart>=0.0.6",
+    "facenet-pytorch>=2.6",
+    "opencv-python>=4.8",
+    "pillow>=10.0",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "huggingface-hub>=0.20",
+    "timm>=0.9",
+    "requests>=2.31",
+]
+
+[tool.setuptools.packages.find]
+include = ["facerecserver", "facerecserver.*"]
+
+[project.scripts]
+facerecserver = "facerecserver.__main__:main"

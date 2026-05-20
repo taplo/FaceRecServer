@@ -1,0 +1,19 @@
+model:
+  path: models/swin_arcface_webface4m_tinyface/model.pt
+  name: swin_arcface_webface4m_tinyface
+  lora_rank: 8
+  lora_scale: 1.0
+  use_lora: true
+
+detection:
+  confidence: 0.95
+  min_face_size: 40
+
+preprocess:
+  image_size: 112
+  do_alignment: true
+  do_quality_check: true
+
+server:
+  host: 0.0.0.0
+  port: 8000
