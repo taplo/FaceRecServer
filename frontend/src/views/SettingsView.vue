@@ -31,6 +31,7 @@
           <span>{{ stats.gallery.dimension }}</span>
         </div>
       </div>
+      <div v-else-if="loading" class="loading">加载中...</div>
       <div class="actions">
         <div class="btn-group">
           <button class="btn btn-warning" @click="rebuildIndex">重建索引</button>
@@ -58,9 +59,11 @@ import type { StatsData } from '@/types'
 
 const currentModel = ref('swin_arcface_webface4m_tinyface')
 const stats = ref<StatsData | null>(null)
+const loading = ref(true)
 
 onMounted(async () => {
   try { stats.value = await api.getStats() } catch {}
+  finally { loading.value = false }
 })
 
 function formatUptime(seconds: number): string {
@@ -73,9 +76,14 @@ function rebuildIndex() {
   alert('重建索引功能需重启服务器生效。请手动重启: python -m facerecserver')
 }
 
-function doClear() {
+async function doClear() {
   if (!confirm('确认清空整个底库？此操作不可恢复！')) return
-  api.clearGallery().then(() => alert('底库已清空'))
+  try {
+    await api.clearGallery()
+    alert('底库已清空')
+  } catch (e) {
+    alert('清空失败')
+  }
 }
 </script>
 
@@ -95,4 +103,5 @@ function doClear() {
 .btn-warning { background: #faad14; color: #fff; }
 .btn-danger { background: #ff4d4f; color: #fff; }
 .about-info { display: flex; flex-direction: column; gap: 4px; }
+.loading { font-size: 13px; color: #888; padding: 8px 0; }
 </style>

@@ -47,7 +47,7 @@
               <img v-if="item.image_url" :src="item.image_url" class="result-thumb" />
               <div class="result-info">
                 <span>{{ rankLabel(i) }} {{ item.name }}</span>
-                <span class="score" :class="scoreColorClass(item.score)">{{ item.score.toFixed(4) }}</span>
+                <span class="score" :class="scoreColor(item.score)">{{ item.score.toFixed(4) }}</span>
               </div>
             </div>
           </div>
@@ -113,15 +113,24 @@ async function onSearchFile(e: Event) {
 async function doCompare() {
   if (!imgAFile.value || !imgBFile.value) return
   compareError.value = ''
-  const fd = new FormData()
-  fd.append('file', imgAFile.value)
+  const fdA = new FormData()
+  fdA.append('file', imgAFile.value)
+  const fdB = new FormData()
+  fdB.append('file', imgBFile.value)
   try {
-    const data = await api.recognize(fd, 1)
-    if (data.results.length > 0) {
-      compareScore.value = data.results[0].score
-    } else {
-      compareScore.value = 0
+    const registerRes = await api.registerFace(fdB)
+    if (registerRes.code !== 0) {
+      compareError.value = registerRes.message
+      return
     }
+    const tempFaceId = registerRes.data?.face_id
+    const searchFd = new FormData()
+    searchFd.append('file', imgAFile.value)
+    const searchData = await api.recognize(searchFd, 1)
+    if (tempFaceId) {
+      await api.deleteFace(tempFaceId).catch(() => {})
+    }
+    compareScore.value = searchData.results[0]?.score ?? 0
   } catch (e: any) {
     compareError.value = e.message || '比对失败'
   }
@@ -151,9 +160,7 @@ function scoreColor(score: number): string {
   return score >= 0.6 ? 'score-high' : score >= 0.4 ? 'score-mid' : 'score-low'
 }
 
-function scoreColorClass(score: number): string {
-  return score >= 0.6 ? 'score-high' : score >= 0.4 ? 'score-mid' : 'score-low'
-}
+
 </script>
 
 <style scoped>

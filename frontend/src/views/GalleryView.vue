@@ -13,7 +13,7 @@
           <div class="detail-info">
             <strong>{{ selectedFace.name }}</strong>
             <div class="detail-meta">ID: {{ selectedFace.face_id.slice(0, 8) }}...</div>
-            <div class="detail-meta">注册: {{ selectedFace.created_at }}</div>
+            <div class="detail-meta">注册: {{ formatTime(selectedFace.created_at) }}</div>
           </div>
         </div>
         <button class="btn btn-danger btn-sm" @click="deleteFace(selectedFace.face_id)">删除此人</button>
@@ -46,7 +46,7 @@
       <div class="modal">
         <h3>注册人脸</h3>
         <p class="subtitle">支持 JPG / PNG 格式</p>
-        <div class="upload-area" @click="$refs.fileInput.click()">
+        <div class="upload-area" @click="fileInput?.click()">
           <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
           <span v-else class="upload-hint">点击选择图片</span>
         </div>
@@ -77,6 +77,7 @@ const showRegister = ref(false)
 const registerFile = ref<File | null>(null)
 const previewUrl = ref('')
 const registerError = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
 
 onMounted(() => loadFaces(1))
 
@@ -127,9 +128,11 @@ async function deleteFace(faceId: string) {
   } catch (e) { console.error('删除失败', e) }
 }
 
-function confirmClear() {
+async function confirmClear() {
   if (!confirm('确认清空整个底库？此操作不可恢复！')) return
-  api.clearGallery().then(() => { selectedFace.value = null; loadFaces(1) })
+  await api.clearGallery()
+  selectedFace.value = null
+  loadFaces(1)
 }
 
 function formatTime(iso: string): string {
