@@ -37,7 +37,7 @@ class GalleryRepository:
         self._index = faiss.IndexIDMap(faiss.IndexFlatIP(self.DIM))
         self._load_index()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS faces (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,20 +52,16 @@ class GalleryRepository:
         """)
         self._conn.commit()
 
-    def _load_index(self):
-        rows = self._conn.execute("SELECT id, name, created_at, image_path, face_id FROM faces").fetchall()
+    def _load_index(self) -> None:
+        rows = self._conn.execute("SELECT id FROM faces").fetchall()
         if not rows:
             return
-        ids = []
-        vectors = []
-        for row in rows:
-            ids.append(row[0])
         vec_path = self.index_path
         if os.path.exists(vec_path):
             self._index = faiss.read_index(vec_path)
-        print(f"[Gallery] 加载底库: {len(ids)} 条记录")
+        print(f"[Gallery] 加载底库: {len(rows)} 条记录")
 
-    def _save_index(self):
+    def _save_index(self) -> None:
         faiss.write_index(self._index, self.index_path)
 
     def add(self, embedding: np.ndarray, name: str, image_path: str = "") -> str:
@@ -78,6 +74,7 @@ class GalleryRepository:
         )
         faiss_id = cursor.lastrowid
         self._index.add_with_ids(normalized.reshape(1, -1).astype(np.float32), np.array([faiss_id]))
+        self._conn.commit()
         self._save_index()
         return face_id
 
@@ -104,11 +101,10 @@ class GalleryRepository:
         self._save_index()
         return True
 
-    def clear(self):
+    def clear(self) -> None:
         self._conn.execute("DELETE FROM faces")
         self._conn.commit()
-        dim = self.DIM
-        self._index = faiss.IndexIDMap(faiss.IndexFlatIP(dim))
+        self._index = faiss.IndexIDMap(faiss.IndexFlatIP(self.DIM))
         self._save_index()
 
     def list_faces(self, page: int = 1, page_size: int = 20, search: str = "") -> tuple:
@@ -133,5 +129,5 @@ class GalleryRepository:
     def get_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
 
-    def close(self):
+    def close(self) -> None:
         self._conn.close()
