@@ -53,4 +53,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     app.include_router(router)
     app.include_router(gallery_router)
+
+    from facerecserver.web.routes import mount_frontend
+    mount_frontend(app)
     return app
