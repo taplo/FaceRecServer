@@ -24,5 +24,11 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["facerecserver", "facerecserver.*"]
 
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+]
+
 [project.scripts]
 facerecserver = "facerecserver.__main__:main"
