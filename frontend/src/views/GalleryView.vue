@@ -1,7 +1,7 @@
 <template>
   <div class="gallery">
     <div class="toolbar">
-      <input v-model="searchQuery" placeholder="搜索姓名..." class="search-input" @keyup.enter="loadFaces(1)" />
+      <input v-model="searchQuery" placeholder="搜索姓名/工号..." class="search-input" @keyup.enter="loadFaces(1)" />
       <button class="btn btn-primary" @click="showRegister = true">+ 注册人脸</button>
       <button class="btn btn-danger-outline" @click="confirmClear">清空底库</button>
     </div>
@@ -12,6 +12,7 @@
           <img v-if="selectedFace.image_url" :src="selectedFace.image_url" class="detail-avatar" />
           <div class="detail-info">
             <strong>{{ selectedFace.name }}</strong>
+            <div class="detail-meta" v-if="selectedFace.employee_id">工号: {{ selectedFace.employee_id }}</div>
             <div class="detail-meta">ID: {{ selectedFace.face_id.slice(0, 8) }}...</div>
             <div class="detail-meta">注册: {{ formatTime(selectedFace.created_at) }}</div>
           </div>
@@ -22,18 +23,19 @@
       <div class="table-wrapper">
         <table>
           <thead>
-            <tr><th>头像</th><th>姓名</th><th>ID</th><th>注册时间</th><th>操作</th></tr>
+            <tr><th>头像</th><th>姓名</th><th>工号</th><th>ID</th><th>注册时间</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="face in faces" :key="face.face_id" :class="{ selected: selectedFace?.face_id === face.face_id }" @click="selectedFace = face">
               <td><img v-if="face.image_url" :src="face.image_url" class="thumb" /></td>
               <td>{{ face.name }}</td>
+              <td>{{ face.employee_id || '--' }}</td>
               <td class="mono">{{ face.face_id.slice(0, 8) }}...</td>
               <td>{{ formatTime(face.created_at) }}</td>
               <td><button class="btn btn-sm btn-danger-text" @click.stop="deleteFace(face.face_id)">删除</button></td>
             </tr>
             <tr v-if="faces.length === 0">
-              <td colspan="5" class="empty">暂无数据</td>
+              <td colspan="6" class="empty">暂无数据</td>
             </tr>
           </tbody>
         </table>

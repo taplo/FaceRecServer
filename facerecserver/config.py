@@ -20,10 +20,17 @@ class DetectionConfig:
 
 
 @dataclass
+class IQAConfig:
+    enabled: bool = True
+    threshold: float = 0.5
+
+
+@dataclass
 class PreprocessConfig:
     image_size: int = 112
     do_alignment: bool = True
     do_quality_check: bool = True
+    iqa: IQAConfig = field(default_factory=IQAConfig)
 
 
 @dataclass
@@ -77,6 +84,9 @@ def load_config(path: str | None = None) -> AppConfig:
     cfg.preprocess.image_size = p.get("image_size", cfg.preprocess.image_size)
     cfg.preprocess.do_alignment = p.get("do_alignment", cfg.preprocess.do_alignment)
     cfg.preprocess.do_quality_check = p.get("do_quality_check", cfg.preprocess.do_quality_check)
+    iq = p.get("iqa", {})
+    cfg.preprocess.iqa.enabled = iq.get("enabled", cfg.preprocess.iqa.enabled)
+    cfg.preprocess.iqa.threshold = iq.get("threshold", cfg.preprocess.iqa.threshold)
 
     s = raw.get("server", {})
     cfg.server.host = s.get("host", cfg.server.host)

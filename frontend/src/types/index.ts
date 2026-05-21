@@ -7,6 +7,7 @@ export interface ApiResponse<T = any> {
 export interface FaceRecord {
   face_id: string
   name: string
+  employee_id?: string
   created_at: string
   image_url?: string | null
 }
@@ -21,6 +22,7 @@ export interface GalleryListData {
 export interface RecognizeItem {
   face_id: string
   name: string
+  employee_id?: string
   score: number
   image_url?: string | null
 }

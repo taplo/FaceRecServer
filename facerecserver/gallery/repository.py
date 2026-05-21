@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
 class FaceRecord:
     face_id: str
     name: str
-    created_at: str
+    created_at: str = ""
     image_path: str = ""
+    employee_id: str = ""
 
 
 @dataclass
@@ -46,9 +47,14 @@ class GalleryRepository:
                 face_id TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                image_path TEXT DEFAULT ''
+                image_path TEXT DEFAULT '',
+                employee_id TEXT DEFAULT ''
             )
         """)
+        try:
+            self._conn.execute("ALTER TABLE faces ADD COLUMN employee_id TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_face_id ON faces(face_id)
         """)
@@ -66,7 +72,7 @@ class GalleryRepository:
     def _save_index(self) -> None:
         faiss.write_index(self._index, self.index_path)
 
-    def add(self, embedding: np.ndarray, name: str, image: np.ndarray | None = None, image_path: str = "") -> str:
+    def add(self, embedding: np.ndarray, name: str, employee_id: str = "", image: np.ndarray | None = None, image_path: str = "") -> str:
         face_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         normalized = embedding / np.linalg.norm(embedding)
@@ -75,12 +81,20 @@ class GalleryRepository:
             faces_dir = os.path.join(self.gallery_dir, "faces")
             os.makedirs(faces_dir, exist_ok=True)
             save_path = os.path.join(faces_dir, f"{face_id}.jpg")
-            Image.fromarray(image).save(save_path, "JPEG")
+            h, w = image.shape[:2]
+            max_dim = 360
+            if max(h, w) > max_dim:
+                scale = max_dim / max(h, w)
+                new_size = (int(w * scale), int(h * scale))
+                img_pil = Image.fromarray(image).resize(new_size, Image.LANCZOS)
+            else:
+                img_pil = Image.fromarray(image)
+            img_pil.save(save_path, "JPEG", quality=85)
             image_path = f"faces/{face_id}.jpg"
 
         cursor = self._conn.execute(
-            "INSERT INTO faces (face_id, name, created_at, image_path) VALUES (?, ?, ?, ?)",
-            (face_id, name, now, image_path),
+            "INSERT INTO faces (face_id, name, employee_id, created_at, image_path) VALUES (?, ?, ?, ?, ?)",
+            (face_id, name, employee_id, now, image_path),
         )
         faiss_id = cursor.lastrowid
         self._index.add_with_ids(normalized.reshape(1, -1).astype(np.float32), np.array([faiss_id]))
@@ -88,13 +102,14 @@ class GalleryRepository:
         self._save_index()
         return face_id
 
-    def add_batch(self, embeddings: list, names: list, image_paths: list | None = None, images: list | None = None) -> GalleryStats:
+    def add_batch(self, embeddings: list, names: list, employee_ids: list | None = None, image_paths: list | None = None, images: list | None = None) -> GalleryStats:
         stats = GalleryStats(total=len(embeddings))
         for i, (emb, name) in enumerate(zip(embeddings, names)):
             try:
+                emp_id = employee_ids[i] if employee_ids else ""
                 img = images[i] if images else None
                 path = image_paths[i] if image_paths else ""
-                self.add(emb, name, image=img, image_path=path)
+                self.add(emb, name, employee_id=emp_id, image=img, image_path=path)
                 stats.succeeded += 1
             except Exception as e:
                 stats.failed += 1
@@ -122,19 +137,19 @@ class GalleryRepository:
         offset = (page - 1) * page_size
         if search:
             count = self._conn.execute(
-                "SELECT COUNT(*) FROM faces WHERE name LIKE ?", (f"%{search}%",)
+                "SELECT COUNT(*) FROM faces WHERE name LIKE ? OR employee_id LIKE ?", (f"%{search}%", f"%{search}%")
             ).fetchone()[0]
             rows = self._conn.execute(
-                "SELECT face_id, name, created_at, image_path FROM faces WHERE name LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
-                (f"%{search}%", page_size, offset),
+                "SELECT face_id, name, created_at, image_path, employee_id FROM faces WHERE name LIKE ? OR employee_id LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (f"%{search}%", f"%{search}%", page_size, offset),
             ).fetchall()
         else:
             count = self._conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
             rows = self._conn.execute(
-                "SELECT face_id, name, created_at, image_path FROM faces ORDER BY id DESC LIMIT ? OFFSET ?",
+                "SELECT face_id, name, created_at, image_path, employee_id FROM faces ORDER BY id DESC LIMIT ? OFFSET ?",
                 (page_size, offset),
             ).fetchall()
-        items = [FaceRecord(face_id=r[0], name=r[1], created_at=r[2], image_path=r[3]) for r in rows]
+        items = [FaceRecord(face_id=r[0], name=r[1], created_at=r[2], image_path=r[3], employee_id=r[4]) for r in rows]
         return items, count
 
     def search(self, embedding: np.ndarray, top_k: int = 5) -> list[dict]:
@@ -150,14 +165,21 @@ class GalleryRepository:
             if faiss_id == -1:
                 continue
             row = self._conn.execute(
-                "SELECT face_id, name, image_path FROM faces WHERE id = ?", (int(faiss_id),)
+                "SELECT face_id, name, image_path, employee_id FROM faces WHERE id = ?", (int(faiss_id),)
             ).fetchone()
             if row:
+                path = row[2]
+                image_url = None
+                if path:
+                    abs_path = os.path.join(self.gallery_dir, path)
+                    if os.path.exists(abs_path):
+                        image_url = f"/api/v1/gallery/{row[0]}/image"
                 results.append({
                     "face_id": row[0],
                     "name": row[1],
                     "score": float(score),
-                    "image_url": f"/api/v1/gallery/{row[0]}/image" if row[2] else None,
+                    "image_url": image_url,
+                    "employee_id": row[3] or "",
                 })
         return results
 
@@ -166,6 +188,13 @@ class GalleryRepository:
             "SELECT image_path FROM faces WHERE face_id = ?", (face_id,)
         ).fetchone()
         return row[0] if row else None
+
+    def get_image_url(self, face_id: str) -> str | None:
+        path = self.get_image_path(face_id)
+        if not path:
+            return None
+        abs_path = os.path.join(self.gallery_dir, path)
+        return f"/api/v1/gallery/{face_id}/image" if os.path.exists(abs_path) else None
 
     def get_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]

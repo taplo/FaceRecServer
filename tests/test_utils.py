@@ -2,6 +2,7 @@ import base64
 import io
 import numpy as np
 from PIL import Image
+import warnings
 from facerecserver.face_recognition.utils import (
     load_image,
     base64_to_image,
@@ -72,4 +73,11 @@ class TestImageUtils:
     def test_estimate_alpha_uniform(self):
         img_arr = np.ones((100, 100, 3), dtype=np.uint8) * 128
         alpha = estimate_alpha(img_arr)
+        assert 0.0 <= alpha <= 1.0
+
+    def test_estimate_alpha_clamp(self):
+        img_arr = np.ones((100, 100, 3), dtype=np.uint8) * 255
+        alpha = estimate_alpha(img_arr, threshold=-2.0)
+        assert alpha == 1.0
+        alpha = estimate_alpha(img_arr, threshold=2.0)
         assert alpha == 0.0

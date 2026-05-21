@@ -6,9 +6,9 @@ import logging
 import shutil
 import requests
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from fastapi import APIRouter, UploadFile, File, Request, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from facerecserver.api.schemas import ApiResponse
 from facerecserver.gallery.repository import GalleryRepository
@@ -37,8 +37,8 @@ def _make_image_from_bytes(data: bytes) -> np.ndarray:
     return np.array(Image.open(io.BytesIO(data)).convert("RGB"))
 
 
-async def _parse_image_from_request(request: Request) -> tuple[np.ndarray, str | None]:
-    """Parse image and optional name from request (multipart or JSON)."""
+async def _parse_image_from_request(request: Request) -> tuple[np.ndarray, str | None, str]:
+    """Parse image, optional name, and employee_id from request (multipart or JSON)."""
     content_type = (request.headers.get("content-type") or "").lower()
     if "multipart/form-data" in content_type:
         form = await request.form()
@@ -46,15 +46,27 @@ async def _parse_image_from_request(request: Request) -> tuple[np.ndarray, str |
         if up_file is None or not hasattr(up_file, "read"):
             raise ValueError("请上传图片文件")
         contents = await up_file.read()
-        name = os.path.splitext(up_file.filename or "unknown")[0]
-        return _make_image_from_bytes(contents), name
+        basename = os.path.splitext(up_file.filename or "unknown")[0]
+        employee_id = ""
+        name = basename
+        if "-" in basename:
+            parts = basename.rsplit("-", 1)
+            name = parts[0]
+            employee_id = parts[1]
+        return _make_image_from_bytes(contents), name, employee_id
     body = await request.json()
+    name = body.get("name") or ""
+    employee_id = body.get("employee_id", "")
+    if not employee_id and "-" in name:
+        parts = name.rsplit("-", 1)
+        name = parts[0]
+        employee_id = parts[1]
     if body.get("image"):
-        return base64_to_image(body["image"]), body.get("name")
+        return base64_to_image(body["image"]), name, employee_id
     if body.get("image_url"):
         resp = requests.get(body["image_url"], timeout=30)
         resp.raise_for_status()
-        return _make_image_from_bytes(resp.content), body.get("name")
+        return _make_image_from_bytes(resp.content), name, employee_id
     raise ValueError("请提供图片 (file, image, 或 image_url)")
 
 
@@ -64,11 +76,11 @@ async def add_face(request: Request):
     extractor = _get_extractor(request)
 
     try:
-        image, name = await _parse_image_from_request(request)
+        image, name, employee_id = await _parse_image_from_request(request)
         name = name or "unknown"
-        embedding = extractor.extract(image)
-        face_id = repo.add(embedding, name, image=image)
-        return ApiResponse(code=0, message="success", data={"face_id": face_id, "name": name})
+        embedding, face_crop = extractor.extract(image, return_face=True)
+        face_id = repo.add(embedding, name, employee_id=employee_id, image=face_crop)
+        return ApiResponse(code=0, message="success", data={"face_id": face_id, "name": name, "employee_id": employee_id})
 
     except FaceNotFoundError as e:
         return ApiResponse(code=1001, message=str(e), data=None)
@@ -106,21 +118,29 @@ async def add_faces_batch(request: Request, file: UploadFile = File(...)):
 
         embeddings = []
         names = []
+        employee_ids = []
         images = []
         errors = []
         for img_path in image_paths:
             try:
                 image = load_image(img_path)
-                emb = extractor.extract(image)
+                emb, face_crop = extractor.extract(image, return_face=True)
                 embeddings.append(emb)
-                names.append(os.path.splitext(os.path.basename(img_path))[0])
-                images.append(image)
+                basename = os.path.splitext(os.path.basename(img_path))[0]
+                if "-" in basename:
+                    parts = basename.rsplit("-", 1)
+                    names.append(parts[0])
+                    employee_ids.append(parts[1])
+                else:
+                    names.append(basename)
+                    employee_ids.append("")
+                images.append(face_crop)
             except FaceNotFoundError:
                 errors.append({"file": os.path.basename(img_path), "reason": "未检测到人脸"})
             except Exception as e:
                 errors.append({"file": os.path.basename(img_path), "reason": str(e)})
 
-        stats = repo.add_batch(embeddings, names, images=images)
+        stats = repo.add_batch(embeddings, names, employee_ids=employee_ids, images=images)
         for err in errors:
             stats.failed += 1
             stats.failures.append(err)
@@ -146,23 +166,45 @@ async def list_faces(
     repo = _get_repo(request)
     items, total = repo.list_faces(page, page_size, search)
     return ApiResponse(code=0, message="success", data={
-        "items": [{"face_id": f.face_id, "name": f.name, "created_at": f.created_at} for f in items],
+        "items": [{
+            "face_id": f.face_id,
+            "name": f.name,
+            "employee_id": f.employee_id,
+            "created_at": f.created_at,
+            "image_url": repo.get_image_url(f.face_id),
+        } for f in items],
         "total": total,
         "page": page,
         "page_size": page_size,
     })
 
 
+def _make_placeholder() -> bytes:
+    img = Image.new("RGB", (120, 120), (200, 200, 200))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([30, 20, 90, 80], outline=(150, 150, 150), width=2)
+    draw.arc([40, 70, 80, 130], 0, 180, fill=(150, 150, 150), width=2)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=70)
+    return buf.getvalue()
+
+
+_PLACEHOLDER: bytes | None = None
+
+
 @router.get("/{face_id}/image")
 async def get_face_image(request: Request, face_id: str):
+    global _PLACEHOLDER
     repo = _get_repo(request)
     image_path = repo.get_image_path(face_id)
     if image_path is None:
         raise HTTPException(status_code=404, detail={"code": 2002, "message": "图片不存在"})
     abs_path = os.path.join(repo.gallery_dir, image_path)
-    if not os.path.exists(abs_path):
-        raise HTTPException(status_code=404, detail={"code": 2002, "message": "图片文件不存在"})
-    return FileResponse(abs_path, media_type="image/jpeg")
+    if os.path.exists(abs_path):
+        return FileResponse(abs_path, media_type="image/jpeg")
+    if _PLACEHOLDER is None:
+        _PLACEHOLDER = _make_placeholder()
+    return Response(content=_PLACEHOLDER, media_type="image/jpeg")
 
 
 @router.delete("/{face_id}", response_model=ApiResponse)
@@ -186,7 +228,7 @@ async def recognize_face(request: Request, top_k: int = Query(5, ge=1, le=50)):
     extractor = _get_extractor(request)
 
     try:
-        image, _ = await _parse_image_from_request(request)
+        image, _name, _emp_id = await _parse_image_from_request(request)
         embedding = extractor.extract(image)
         results = repo.search(embedding, top_k)
         return ApiResponse(code=0, message="success", data={"results": results})

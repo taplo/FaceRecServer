@@ -27,7 +27,7 @@ class FaceEmbeddingExtractor:
         )
         self.device = config.device
 
-    def extract(self, image: np.ndarray) -> np.ndarray:
+    def extract(self, image: np.ndarray, return_face: bool = False) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         if self.config.preprocess.do_quality_check:
             ok, msg = check_image_quality(image)
             if not ok:
@@ -42,7 +42,19 @@ class FaceEmbeddingExtractor:
             face = image[y1:y2, x1:x2]
             face = np.array(Image.fromarray(face).resize((120, 120)))
 
-        alpha = estimate_alpha(face)
+        face_crop = None
+        if return_face:
+            x1, y1, x2, y2 = bbox
+            fw, fh = x2 - x1, y2 - y1
+            margin_w, margin_h = int(fw * 0.3), int(fh * 0.3)
+            h_img, w_img = image.shape[:2]
+            cx1 = max(0, x1 - margin_w)
+            cy1 = max(0, y1 - margin_h)
+            cx2 = min(w_img, x2 + margin_w)
+            cy2 = min(h_img, y2 + margin_h)
+            face_crop = image[cy1:cy2, cx1:cx2]
+
+        alpha = estimate_alpha(face, self.config.preprocess.iqa.threshold)
 
         face_tensor = torch.from_numpy(face).permute(2, 0, 1).float().unsqueeze(0)
         face_tensor = face_tensor / 255.0
@@ -54,7 +66,11 @@ class FaceEmbeddingExtractor:
         with torch.no_grad():
             embedding = self.model(face_tensor, alpha_tensor)
 
-        return embedding.cpu().numpy().flatten()
+        embedding = torch.nn.functional.normalize(embedding, p=2, dim=1)
+        emb = embedding.cpu().numpy().flatten()
+        if return_face:
+            return emb, face_crop
+        return emb
 
     def extract_from_file(self, path: str) -> np.ndarray:
         image = load_image(path)

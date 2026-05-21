@@ -71,17 +71,21 @@ def main():
             try:
                 basename = os.path.splitext(os.path.basename(entry_name))[0]
                 if "-" in basename:
-                    person_name = basename.rsplit("-", 1)[0]
+                    parts = basename.rsplit("-", 1)
+                    person_name = parts[0]
+                    employee_id = parts[1]
                 else:
                     person_name = basename
+                    employee_id = ""
 
                 raw = zf.read(entry_name)
                 image = np.array(Image.open(io.BytesIO(raw)).convert("RGB"))
 
-                embedding = extractor.extract(image)
-                face_id = repo.add(embedding, person_name, entry_name)
+                embedding, face = extractor.extract(image, return_face=True)
+                face_id = repo.add(embedding, person_name, employee_id=employee_id, image=face)
                 result["status"] = "success"
                 result["face_id"] = face_id
+                result["employee_id"] = employee_id
 
             except Exception as e:
                 result["status"] = "failed"
@@ -105,7 +109,7 @@ def main():
 
         # 写入 CSV 报表
         with open(REPORT_PATH, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=["filename", "status", "reason", "face_id"])
+            writer = csv.DictWriter(f, fieldnames=["filename", "status", "reason", "face_id", "employee_id"])
             writer.writeheader()
             writer.writerows(records)
 

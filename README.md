@@ -1,239 +1,267 @@
 # FaceRecServer
 
-基于 PETALface (WACV 2025) 算法的人脸识别 API 服务，提供人脸底库管理、人脸比对 (1:1)、人脸识别 (1:N) 等功能，并附带基于 Web 的管理后台。
+基于 PETALface (WACV 2025) 算法的人脸识别 API 服务，提供人脸底库管理、1:1 比对、1:N 搜索等功能，并附带基于 Web 的管理后台。
 
 ## 硬件要求
 
-- **CPU**: 支持 AVX2 指令集（用于 Faiss 索引）
-- **内存**: 最低 4GB，推荐 8GB+
-- **GPU**: 可选（CUDA），通过 `torch.cuda.is_available()` 自动检测
-- **磁盘**: 100MB（不含模型文件，模型约 200MB）
+| 资源 | 最低 | 推荐 |
+|------|------|------|
+| CPU | 支持 AVX2 指令集 | x86-64 4 核+ |
+| 内存 | 8 GB | 16 GB+ |
+| 磁盘 | 5 GB 可用空间 | 20 GB+（SSD 更佳） |
+| GPU | 可选（CUDA） | NVIDIA 6 GB+ |
+
+> **磁盘说明**: 仅模型文件约 1.6 GB（PETALface 默认模型 + CNN-IQA 质量评估模型）。人脸照片底库按每张 10-50 KB 估算，6949 人约 200 MB。如需测试多个模型，磁盘需求会进一步增加。
+
+## 功能
+
+- **人脸特征提取** — 从图片中提取 512 维人脸特征向量
+- **底库管理** — 人脸注册、批量导入（ZIP）、列表/搜索、删除、清空
+- **1:N 搜索** — 上传照片，在底库中搜索最相似的人脸
+- **1:1 比对** — 上传两张照片，计算相似度
+- **Web 管理后台** — Vue 3 前端，可视化操作
+- **工号支持** — 自动解析 `姓名-工号.jpg` 文件名格式
 
 ## 快速开始
 
-### 1. 安装依赖
+### 前置要求
+
+- Python >= 3.12
+- [uv](https://docs.astral.sh/uv/) 包管理器
+
+### 安装
 
 ```bash
-# 安装 Python 3.12+
-# 安装 uv（包管理器）
-pip install uv
-
-# 安装项目依赖
+git clone https://github.com/your-org/FaceRecServer.git
+cd FaceRecServer
 uv sync
 ```
 
-### 2. 下载模型
-
-从 HuggingFace 下载模型权重到项目目录：
+### 下载模型
 
 ```bash
-# 模型存放路径（默认）
-models/swin_arcface_webface4m_tinyface/model.pt
+uv run python scripts/download_model.py --model swin_arcface_webface4m_tinyface
 ```
 
-> 网络受限时，可手动下载后将文件放入对应目录。
+模型文件保存到 `models/swin_arcface_webface4m_tinyface/model.pt`（约 800 MB）。首次启动时还会自动下载 CNN-IQA 质量评估模型（约 800 MB，`pyiqa` 依赖），总模型占用约 1.6 GB。
 
-### 3. 启动服务
+### 启动服务
 
 ```bash
-# 开发模式（热加载）
-uv run uvicorn facerecserver.app:create_app --factory --reload --port 8000
-
 # 生产模式
 uv run python -m facerecserver
 
-# 或直接使用 uv run
-uv run python -m facerecserver
+# 开发模式（热加载）
+uv run uvicorn facerecserver.app:create_app --factory --reload --port 8000
 ```
 
-服务启动后访问：
+访问：
 - **API 文档**: http://localhost:8000/docs
-- **管理后台**: http://localhost:8000（需先构建前端）
+- **Web 后台**: http://localhost:8000（需先构建前端: `cd frontend && npm run build`）
 
-## Web 管理后台
-
-前端位于 `frontend/` 目录，基于 Vue 3 + Vite + TypeScript。
-
-```bash
-# 安装前端依赖
-cd frontend
-npm install
-
-# 开发模式（热更新，API 自动代理到 8000 端口）
-npm run dev
-
-# 生产构建（构建产物由 FastAPI 直接服务）
-npm run build
-```
-
-管理后台包含 4 个页面：
-
-| 页面 | 功能 |
-|------|------|
-| 仪表盘 | 底库统计、服务器运行时间、运行设备 |
-| 人脸底库 | 列表/搜索/注册/删除，支持单张注册 |
-| 人脸识别 | 1:1 比对 + 1:N 搜索，支持 Top-K 选择 |
-| 系统设置 | 模型信息、底库维护 |
-
-## API 文档
+## API 参考
 
 所有 API 统一返回格式：
 
 ```json
-{
-  "code": 0,
-  "message": "success",
-  "data": { ... }
-}
+{"code": 0, "message": "success", "data": { ... }}
 ```
 
-错误码说明：
+错误码：
 
 | code | 说明 |
 |------|------|
 | 0 | 成功 |
 | 400 | 请求参数错误 |
 | 1001 | 未检测到人脸 |
-| 1002 | 图片处理失败 |
-| 2002 | 人脸不存在 |
-| 5000 | 服务未初始化（模型/底库未加载） |
+| 1002 | 图片处理失败（质量检查等） |
+| 2002 | 人脸/图片不存在 |
+| 5000 | 服务未初始化 |
 | -1 | 服务器内部错误 |
 
-### 人脸特征提取
+### 提取特征
 
-```http
+```
 POST /api/v1/embedding
 ```
 
 三种输入方式：
 
-| 方式 | Content-Type | 参数 |
-|------|-------------|------|
-| 文件上传 | multipart/form-data | `file` |
-| Base64 | application/json | `{"image": "<base64>"}` |
-| URL | application/json | `{"image_url": "https://..."}` |
+```bash
+# 方式 1: 文件上传
+curl -X POST http://localhost:8000/api/v1/embedding \
+  -F "file=@photo.jpg"
 
-**响应示例：**
+# 方式 2: Base64
+curl -X POST http://localhost:8000/api/v1/embedding \
+  -H "Content-Type: application/json" \
+  -d '{"image": "<base64_data>"}'
 
-```json
-{
-  "code": 0,
-  "data": {
-    "embedding": [0.123, -0.456, ...],
-    "dimension": 512
-  }
-}
+# 方式 3: 图片 URL
+curl -X POST http://localhost:8000/api/v1/embedding \
+  -H "Content-Type: application/json" \
+  -d '{"image_url": "https://example.com/photo.jpg"}'
 ```
 
-### 底库管理
+响应：
 
-#### 注册人脸
+```json
+{"code": 0, "data": {"embedding": [0.123, -0.456, ...], "dimension": 512}}
+```
 
-```http
+### 注册人脸
+
+```
 POST /api/v1/gallery
 ```
 
-与 `/embedding` 相同的三种输入方式，额外支持 `name` 参数。
+```bash
+# 上传文件，文件名作为姓名
+curl -X POST http://localhost:8000/api/v1/gallery \
+  -F "file=@张三-ENG001.jpg"
 
-**响应：**
+# 上传文件，指定姓名和工号
+curl -X POST http://localhost:8000/api/v1/gallery \
+  -F "file=@photo.jpg"
+
+# JSON 方式，显式指定姓名和工号
+curl -X POST http://localhost:8000/api/v1/gallery \
+  -H "Content-Type: application/json" \
+  -d '{"image": "<base64>", "name": "张三", "employee_id": "ENG001"}'
+```
+
+如果文件名格式为 `姓名-工号.jpg`，系统自动解析工号。响应：
 
 ```json
-{
-  "code": 0,
-  "data": {
-    "face_id": "uuid-string",
-    "name": "张三"
-  }
-}
+{"code": 0, "data": {"face_id": "uuid", "name": "张三", "employee_id": "ENG001"}}
 ```
 
-#### 批量注册（ZIP 上传）
+### 批量注册（ZIP）
 
-```http
+```
 POST /api/v1/gallery/batch
-Content-Type: multipart/form-data
-
-file: @faces.zip
 ```
 
-- ZIP 内支持 JPG/PNG/BMP/TIFF/WebP 格式
-- 文件名作为姓名（不含扩展名）
-- 支持 GBK 编码文件名
-- 返回成功/失败统计
-
-#### 底库列表
-
-```http
-GET /api/v1/gallery?page=1&page_size=20&search=张三
+```bash
+curl -X POST http://localhost:8000/api/v1/gallery/batch \
+  -F "file=@faces.zip"
 ```
 
-#### 删除人脸
+ZIP 文件名格式：`姓名-工号.jpg`。响应：
 
-```http
-DELETE /api/v1/gallery/{face_id}
+```json
+{"code": 0, "data": {"total": 100, "succeeded": 98, "failed": 2, "failures": [...]}}
 ```
 
-#### 清空底库
+### 1:N 搜索
 
-```http
-DELETE /api/v1/gallery
 ```
-
-#### 获取人脸图片
-
-```http
-GET /api/v1/gallery/{face_id}/image
-```
-
-返回 JPEG 图片（注册时保存的人脸裁剪图）。
-
-### 人脸识别
-
-#### 1:N 搜索
-
-```http
 POST /api/v1/gallery/recognize?top_k=5
 ```
 
-三种输入方式（同注册），在底库中搜索最相似的 Top-K 条结果。
+```bash
+curl -X POST "http://localhost:8000/api/v1/gallery/recognize?top_k=5" \
+  -F "file=@query.jpg"
+```
 
-**响应：**
+响应：
 
 ```json
 {
   "code": 0,
   "data": {
     "results": [
-      {"face_id": "...", "name": "张三", "score": 0.8723, "image_url": "/api/v1/gallery/.../image"},
-      {"face_id": "...", "name": "张伟", "score": 0.6541, "image_url": "/api/v1/gallery/.../image"}
+      {"face_id": "uuid1", "name": "张三", "employee_id": "ENG001", "score": 0.8723, "image_url": "/api/v1/gallery/uuid1/image"},
+      {"face_id": "uuid2", "name": "李四", "employee_id": "ENG002", "score": 0.6541, "image_url": "/api/v1/gallery/uuid2/image"}
     ]
   }
 }
 ```
 
-> 注意：结果不内置阈值过滤，相似度阈值由调用方自行判断。一般建议阈值 ≥0.6 为同一人。
+> score 为余弦相似度（内积），范围 [-1, 1]。建议阈值 ≥0.6 判为同一人。
 
-### 系统统计
+### 列出底库
 
-```http
-GET /api/v1/stats
+```
+GET /api/v1/gallery?page=1&page_size=20&search=张三
 ```
 
-**响应：**
+```bash
+curl "http://localhost:8000/api/v1/gallery?page=1&page_size=10&search=张三"
+```
+
+支持按姓名或工号搜索。响应：
 
 ```json
 {
   "code": 0,
   "data": {
-    "gallery": {"total_faces": 6199, "index_size": 6199, "dimension": 512},
-    "server": {"uptime_seconds": 7200, "device": "cpu"}
+    "items": [
+      {"face_id": "uuid", "name": "张三", "employee_id": "ENG001", "created_at": "2026-05-21T12:00:00+00:00", "image_url": "/api/v1/gallery/uuid/image"}
+    ],
+    "total": 1, "page": 1, "page_size": 20
   }
 }
 ```
 
+### 删除人脸
+
+```
+DELETE /api/v1/gallery/{face_id}
+```
+
+### 清空底库
+
+```
+DELETE /api/v1/gallery
+```
+
+### 获取人脸图片
+
+```
+GET /api/v1/gallery/{face_id}/image
+```
+
+### 系统统计
+
+```
+GET /api/v1/stats
+```
+
+```json
+{
+  "code": 0,
+  "data": {
+    "gallery": {"total_faces": 6949, "index_size": 6949, "dimension": 512},
+    "server": {"uptime_seconds": 3600, "device": "cpu"}
+  }
+}
+```
+
+## 底库导入脚本
+
+项目附带命令行导入工具，用于从 ZIP 文件批量导入人脸：
+
+```bash
+# 编辑 scripts/import_gallery.py 修改 ZIP_PATH 变量
+uv run python scripts/import_gallery.py
+```
+
+或运行批处理文件：
+
+```bash
+run_import.bat
+```
+
+导入流程：
+1. 清空现有底库
+2. 遍历 ZIP 内所有图片
+3. 对每张图片：MTCNN 检测 → 对齐 → PETALface 提取特征 → 注册到底库
+4. 输出 CSV 报告到 `gallery/import_report.csv`
+
 ## 配置
 
-配置文件：`facerecserver/config.yaml`
+默认配置 `facerecserver/config.yaml`：
 
 ```yaml
 model:
@@ -244,117 +272,75 @@ model:
   use_lora: true
 
 detection:
-  confidence: 0.95          # MTCNN 人脸检测置信度阈值
-  min_face_size: 40          # 最小人脸尺寸
+  confidence: 0.95
+  min_face_size: 40
 
 preprocess:
-  image_size: 112            # 模型输入尺寸
-  do_alignment: true         # 人脸对齐
-  do_quality_check: true     # 图像质量检查
+  image_size: 112
+  do_alignment: true
+  do_quality_check: true
+  iqa:
+    enabled: true
+    threshold: 0.5
 
 server:
   host: 0.0.0.0
   port: 8000
 
 gallery:
-  db_dir: gallery            # 底库存储目录
-  db_name: faces             # 数据库文件名前缀
+  db_dir: gallery
+  db_name: faces
   page_size_default: 20
   page_size_max: 100
 ```
 
-配置可通过环境变量 `FACEREC_CONFIG` 指定路径覆盖。
+环境变量 `FACEREC_CONFIG` 可指定自定义配置路径。
 
-## 底库导入
+### 关键配置说明
 
-项目附带命令行导入脚本，用于从 ZIP 批量导入人脸照片：
-
-```bash
-# 编辑 scripts/import_gallery.py 修改 ZIP_PATH
-uv run python scripts/import_gallery.py
-```
-
-或使用批处理文件：
-
-```bash
-run_import.bat
-```
-
-导入流程：
-1. 清空现有底库
-2. 从 ZIP 读取图片文件（支持 GBK 编码文件名）
-3. MTCNN 检测 + PETALface 提取特征
-4. 存入 Faiss 索引 + SQLite
-5. 输出 CSV 格式的导入报表到 `gallery/import_report.csv`
-
-## 技术栈
-
-| 组件 | 技术选型 |
-|------|----------|
-| 语言 | Python >=3.12 |
-| 包管理 | uv |
-| Web 框架 | FastAPI |
-| 人脸检测 | MTCNN (facenet-pytorch) |
-| 特征提取 | PETALface (Swin-Tiny + ArcFace, 512-dim) |
-| 向量检索 | Faiss (IndexFlatIP, 内积相似度) |
-| 元数据存储 | SQLite |
-| 前端 | Vue 3 + Vite + TypeScript + Vue Router 4 |
+| 配置项 | 说明 | 建议 |
+|--------|------|------|
+| `detection.confidence` | MTCNN 检测置信度阈值 | 0.9-0.98，越低召回越高 |
+| `detection.min_face_size` | 最小人脸尺寸(px) | 30-60 |
+| `preprocess.do_quality_check` | 是否检查模糊/过暗 | 批量导入建议关闭 |
+| `preprocess.iqa.threshold` | 图像质量评分阈值 | 0.3-0.7 |
+| `model.use_lora` | 是否启用 LoRA 双分支 | 建议开启 |
 
 ## 项目结构
 
 ```
 facerecserver/
-├── api/                # API 路由和请求模型
-│   ├── routes.py       # /embedding, /stats 端点
-│   └── schemas.py      # Pydantic 模型
-├── face_detection/     # MTCNN 人脸检测
-├── face_recognition/   # PETALface 特征提取
-├── gallery/            # 底库管理
-│   ├── repository.py   # SQLite + Faiss 存储层
-│   ├── routes.py       # 底库 CRUD + 识别端点
-│   └── schemas.py      # 请求/响应模型
-├── web/                # 前端静态文件服务
-│   └── routes.py       # SPA 挂载
-├── app.py              # FastAPI 应用工厂 + 生命周期
-├── config.py           # 配置加载
-└── config.yaml         # 配置文件
+├── api/                 # 主路由: /embedding, /stats
+├── face_detection/      # MTCNN 检测 + 关键点对齐
+├── face_recognition/    # PETALface 模型 + 特征提取
+├── gallery/             # 底库: CRUD 路由 + Faiss/SQLite 存储
+├── web/                 # 前端 SPA 静态文件挂载
+├── app.py               # FastAPI 应用工厂
+├── config.py            # 配置 dataclass + YAML 加载
+└── config.yaml          # 默认配置
 
-frontend/               # Vue 3 前端项目
-├── src/
-│   ├── views/          # 4 个页面组件
-│   ├── components/     # 通用组件
-│   ├── api/client.ts   # API 客户端
-│   └── router/         # 路由配置
-└── vite.config.ts      # Vite 配置（API 代理）
+frontend/                # Vue 3 + TypeScript 前端
+├── src/views/           # 4 个页面: 仪表盘/底库/识别/设置
+├── src/api/client.ts    # API 客户端
+└── dist/                # 构建产物
 
 scripts/
-└── import_gallery.py   # 底库批量导入脚本
-
-gallery/                # 运行时数据
-├── faces.db            # SQLite 元数据
-├── faces.faiss         # Faiss 向量索引
-└── faces/              # 人脸裁剪图片
+├── download_model.py    # HuggingFace 模型下载
+└── import_gallery.py    # ZIP 批量导入
 ```
 
-## 常见问题
+## 技术栈
 
-### 启动时模型加载失败
-
-确保模型权重已下载到配置中 `model.path` 指定的路径。
-
-### 注册时返回 "未检测到人脸"
-
-图片中人脸太小、角度过大、或质量过低。可尝试降低配置中的 `detection.confidence` 阈值。
-
-### 识别准确率不理想
-
-- 确保注册图片质量良好（正面、光线均匀）
-- 增大 MTCNN 的 `min_face_size` 过滤过小的人脸
-- 相似度阈值建议 ≥0.6
-
-### 服务器启动慢
-
-首次启动需要加载 PyTorch 模型（约 500ms-2s，取决于 CPU）和重建 Faiss 索引。启动后正常请求不受影响。
+| 组件 | 选型 |
+|------|------|
+| 语言/运行时 | Python >=3.12, uv |
+| Web 框架 | FastAPI + uvicorn |
+| 人脸检测 | MTCNN (facenet-pytorch) |
+| 特征提取 | PETALface (Swin-Tiny, 512-dim) |
+| 质量评估 | CNN-IQA (pyiqa) |
+| 向量检索 | Faiss (IndexFlatIP, 余弦相似度) |
+| 元数据存储 | SQLite |
+| 前端 | Vue 3 + TypeScript + Vite |
 
 ## License
 

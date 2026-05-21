@@ -46,7 +46,7 @@
             <div v-for="(item, i) in searchResults" :key="item.face_id" class="result-item">
               <img v-if="item.image_url" :src="item.image_url" class="result-thumb" />
               <div class="result-info">
-                <span>{{ rankLabel(i) }} {{ item.name }}</span>
+                <span>{{ rankLabel(i) }} {{ item.name }}<span v-if="item.employee_id" class="emp-tag">#{{ item.employee_id }}</span></span>
                 <span class="score" :class="scoreColor(item.score)">{{ item.score.toFixed(4) }}</span>
               </div>
             </div>
@@ -193,5 +193,6 @@ function scoreColor(score: number): string {
 .score-high { color: #52c41a; }
 .score-mid { color: #faad14; }
 .score-low { color: #ff4d4f; }
+.emp-tag { font-size: 11px; color: #888; margin-left: 4px; background: #f5f5f5; padding: 1px 5px; border-radius: 3px; }
 .error { color: #ff4d4f; font-size: 12px; margin-top: 8px; }
 </style>
