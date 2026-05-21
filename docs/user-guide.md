@@ -65,7 +65,7 @@ PETALface 使用 LoRA 双分支设计：
 |------|------|------|
 | CPU | 支持 AVX2 指令集 | x86-64 4 核+ |
 | 内存 | 8 GB | 16 GB+ |
-| 磁盘 | 5 GB 可用空间 | 20 GB+（SSD 更佳） |
+| 磁盘 | 10 GB 可用空间 | 50 GB+（SSD 更佳） |
 | GPU | 可选（CUDA） | NVIDIA 6 GB+ |
 | Python | 3.12 | 3.12+ |
 
