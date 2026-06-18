@@ -10,6 +10,12 @@ from facerecserver.gallery.repository import GalleryRepository
 from facerecserver.face_recognition.embedding import FaceEmbeddingExtractor
 from facerecserver.config import AppConfig
 
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 logger = logging.getLogger(__name__)
 
 
