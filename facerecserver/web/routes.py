@@ -1,5 +1,8 @@
+import logging
 import os
 from fastapi.responses import FileResponse, JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 def mount_frontend(app):
@@ -9,8 +12,8 @@ def mount_frontend(app):
         "frontend", "dist"
     )
     if not os.path.isdir(dist_dir):
-        print(f"[Web] 前端构建目录不存在: {dist_dir}")
-        print("[Web] 请先执行: cd frontend && npm run build")
+        logger.warning("前端构建目录不存在: %s", dist_dir)
+        logger.info("请先执行: cd frontend && npm run build")
         return
 
     from fastapi.staticfiles import StaticFiles

@@ -18,6 +18,19 @@ from facerecserver.face_detection.detector import FaceNotFoundError
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/gallery")
 
+_MAX_FILE_SIZE = 10 * 1024 * 1024
+_MAX_ZIP_SIZE = 500 * 1024 * 1024
+_MAX_IMAGE_DIM = 4096
+
+
+def _validate_image(data: bytes) -> np.ndarray:
+    if len(data) > _MAX_FILE_SIZE:
+        raise ValueError(f"文件过大: {len(data) / 1024 / 1024:.1f}MB > {_MAX_FILE_SIZE / 1024 / 1024:.0f}MB")
+    img = Image.open(io.BytesIO(data))
+    if max(img.size) > _MAX_IMAGE_DIM:
+        raise ValueError(f"图片尺寸过大: {img.size}，最大允许 {_MAX_IMAGE_DIM}px")
+    return np.array(img.convert("RGB"))
+
 
 def _get_repo(request: Request) -> GalleryRepository:
     repo = getattr(request.app.state, "gallery_repo", None)
@@ -34,7 +47,7 @@ def _get_extractor(request: Request):
 
 
 def _make_image_from_bytes(data: bytes) -> np.ndarray:
-    return np.array(Image.open(io.BytesIO(data)).convert("RGB"))
+    return _validate_image(data)
 
 
 async def _parse_image_from_request(request: Request) -> tuple[np.ndarray, str | None, str]:
@@ -99,6 +112,8 @@ async def add_faces_batch(request: Request, file: UploadFile = File(...)):
     contents = await file.read()
     if not contents:
         return ApiResponse(code=400, message="ZIP 文件为空", data=None)
+    if len(contents) > _MAX_ZIP_SIZE:
+        return ApiResponse(code=400, message=f"ZIP 文件过大: {len(contents) / 1024 / 1024:.1f}MB > {_MAX_ZIP_SIZE / 1024 / 1024:.0f}MB", data=None)
 
     temp_dir = tempfile.mkdtemp()
     try:
@@ -172,7 +187,31 @@ async def list_faces(
             "employee_id": f.employee_id,
             "created_at": f.created_at,
             "image_url": repo.get_image_url(f.face_id),
+            "person_id": f.person_id,
         } for f in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    })
+
+
+@router.get("/persons", response_model=ApiResponse)
+async def list_persons(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: str = Query("", max_length=50),
+):
+    repo = _get_repo(request)
+    items, total = repo.list_persons(page, page_size, search)
+    return ApiResponse(code=0, message="success", data={
+        "items": [{
+            "person_id": p.person_id,
+            "name": p.name,
+            "employee_id": p.employee_id,
+            "created_at": p.created_at,
+            "face_count": p.face_count,
+        } for p in items],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -212,6 +251,14 @@ async def delete_face(request: Request, face_id: str):
     repo = _get_repo(request)
     if not repo.delete(face_id):
         return ApiResponse(code=2002, message="人脸不存在", data=None)
+    return ApiResponse(code=0, message="success", data=None)
+
+
+@router.delete("/persons/{person_id}", response_model=ApiResponse)
+async def delete_person(request: Request, person_id: int):
+    repo = _get_repo(request)
+    if not repo.delete_person(person_id):
+        return ApiResponse(code=2002, message="人员不存在", data=None)
     return ApiResponse(code=0, message="success", data=None)
 
 

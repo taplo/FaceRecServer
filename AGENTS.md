@@ -35,25 +35,6 @@ Conventions not yet established. Will populate as patterns emerge during develop
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
 ## Architecture
-
-## Project Type
-## File Map
-| Path | Purpose |
-|------|---------|
-| `main.py` | Entry point with `main()` stub (prints "Hello from facerecserver!") |
-| `pyproject.toml` | Project metadata, Python 3.12+, no dependencies |
-| `.python-version` | Python version pin (3.12) |
-| `README.md` | Empty |
-## Current State
-## Patterns
-- Uses `uv` for project management (pyproject.toml, no requirements.txt)
-- Python 3.12 minimum
-## What's Missing (for a face recognition server)
-- HTTP server/framework (FastAPI recommended)
-- Face detection library (OpenCV, face_recognition, etc.)
-- Image processing pipeline
-- Storage/DB for face data
-- API endpoints for registration, recognition, management
 <!-- GSD:architecture-end -->
 
 <!-- GSD:skills-start source:skills/ -->
@@ -83,3 +64,16 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 > Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+
+## 代理服务器
+
+用于 GitHub 推送等外网访问：
+
+- **HTTPS 代理**: `http://192.168.3.208:8787`
+- **SOCKS 代理**: `192.168.3.208:8888`
+
+使用方式:
+```powershell
+$env:HTTP_PROXY="http://192.168.3.208:8787"
+$env:HTTPS_PROXY="http://192.168.3.208:8787"
+```

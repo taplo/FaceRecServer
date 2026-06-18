@@ -45,6 +45,14 @@ def check_image_quality(image: np.ndarray, blur_threshold: float = 100.0, min_br
 _iqa_model = None
 
 
+_iqa_device = "cpu"
+
+
+def _set_iqa_device(device: str):
+    global _iqa_device
+    _iqa_device = device
+
+
 def _get_iqa_model():
     global _iqa_model
     if _iqa_model is None:
@@ -52,7 +60,7 @@ def _get_iqa_model():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             import pyiqa
-            _iqa_model = pyiqa.create_metric("cnniqa", device="cpu")
+            _iqa_model = pyiqa.create_metric("cnniqa", device=_iqa_device)
     return _iqa_model
 
 

@@ -24,12 +24,34 @@
 
 ## 快速开始
 
-### 前置要求
+### Docker 部署（推荐）
+
+```bash
+# 构建镜像
+docker compose build
+
+# 启动服务（自动下载模型）
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+```
+
+首次启动会自动下载模型（约 800 MB），稍后访问：
+- **API 文档**: http://localhost:8000/docs
+- **Web 后台**: http://localhost:8000
+- **健康检查**: http://localhost:8000/api/v1/health
+
+> GPU 加速：如果宿主机有 NVIDIA GPU，安装 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) 后自动启用。
+
+### 本地开发
+
+#### 前置要求
 
 - Python >= 3.12
 - [uv](https://docs.astral.sh/uv/) 包管理器
 
-### 安装
+#### 安装
 
 ```bash
 git clone https://github.com/your-org/FaceRecServer.git
@@ -37,7 +59,7 @@ cd FaceRecServer
 uv sync
 ```
 
-### 下载模型
+#### 下载模型
 
 ```bash
 uv run python scripts/download_model.py --model swin_arcface_webface4m_tinyface
@@ -45,7 +67,7 @@ uv run python scripts/download_model.py --model swin_arcface_webface4m_tinyface
 
 模型文件保存到 `models/swin_arcface_webface4m_tinyface/model.pt`（约 800 MB）。首次启动时还会自动下载 CNN-IQA 质量评估模型（约 800 MB，`pyiqa` 依赖），总模型占用约 1.6 GB。
 
-### 启动服务
+#### 启动服务
 
 ```bash
 # 生产模式
@@ -153,6 +175,31 @@ ZIP 文件名格式：`姓名-工号.jpg`。响应：
 {"code": 0, "data": {"total": 100, "succeeded": 98, "failed": 2, "failures": [...]}}
 ```
 
+### 1:1 比对
+
+```
+POST /api/v1/compare
+```
+
+```bash
+# 文件上传方式
+curl -X POST http://localhost:8000/api/v1/compare \
+  -F "file1=@face1.jpg" -F "file2=@face2.jpg"
+
+# JSON 方式
+curl -X POST http://localhost:8000/api/v1/compare \
+  -H "Content-Type: application/json" \
+  -d '{"image1": "<base64_1>", "image2": "<base64_2>"}'
+```
+
+响应：
+
+```json
+{"code": 0, "data": {"similarity": 0.8723}}
+```
+
+> similarity 为余弦相似度，范围 [-1, 1]。建议阈值 ≥0.6 判为同一人。
+
 ### 1:N 搜索
 
 ```
@@ -180,7 +227,17 @@ curl -X POST "http://localhost:8000/api/v1/gallery/recognize?top_k=5" \
 
 > score 为余弦相似度（内积），范围 [-1, 1]。建议阈值 ≥0.6 判为同一人。
 
-### 列出底库
+### 健康检查
+
+```
+GET /api/v1/health
+```
+
+```json
+{"status": "ok", "model_loaded": true, "gallery_ready": true, "device": "cuda", "uptime_seconds": 3600}
+```
+
+### 列出底库（按人脸）
 
 ```
 GET /api/v1/gallery?page=1&page_size=20&search=张三
@@ -204,10 +261,36 @@ curl "http://localhost:8000/api/v1/gallery?page=1&page_size=10&search=张三"
 }
 ```
 
+### 列出人员（按人聚合）
+
+```
+GET /api/v1/gallery/persons?page=1&page_size=20&search=张三
+```
+
+```json
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {"person_id": 1, "name": "张三", "employee_id": "ENG001", "created_at": "...", "face_count": 3}
+    ],
+    "total": 1, "page": 1, "page_size": 20
+  }
+}
+```
+
+> 同一人注册多张照片后，`face_count` 表示该人的底库照片数，1:N 搜索会自动按人聚合取最高分。
+
 ### 删除人脸
 
 ```
 DELETE /api/v1/gallery/{face_id}
+```
+
+### 删除人员（级联删除其所有人脸）
+
+```
+DELETE /api/v1/gallery/persons/{person_id}
 ```
 
 ### 清空底库
@@ -232,8 +315,8 @@ GET /api/v1/stats
 {
   "code": 0,
   "data": {
-    "gallery": {"total_faces": 6949, "index_size": 6949, "dimension": 512},
-    "server": {"uptime_seconds": 3600, "device": "cpu"}
+    "gallery": {"total_faces": 6949, "total_persons": 6949, "index_size": 6949, "dimension": 512},
+    "server": {"uptime_seconds": 3600, "device": "cuda"}
   }
 }
 ```
@@ -310,10 +393,10 @@ gallery:
 
 ```
 facerecserver/
-├── api/                 # 主路由: /embedding, /stats
-├── face_detection/      # MTCNN 检测 + 关键点对齐
-├── face_recognition/    # PETALface 模型 + 特征提取
-├── gallery/             # 底库: CRUD 路由 + Faiss/SQLite 存储
+├── api/                 # 主路由: /embedding, /compare, /stats, /health
+├── face_detection/      # MTCNN 检测 + 关键点对齐（自动 GPU）
+├── face_recognition/    # PETALface 模型 + 特征提取（自动 GPU）
+├── gallery/             # 底库: 人脸/人员 CRUD + Faiss/SQLite 存储
 ├── web/                 # 前端 SPA 静态文件挂载
 ├── app.py               # FastAPI 应用工厂
 ├── config.py            # 配置 dataclass + YAML 加载
@@ -326,7 +409,11 @@ frontend/                # Vue 3 + TypeScript 前端
 
 scripts/
 ├── download_model.py    # HuggingFace 模型下载
-└── import_gallery.py    # ZIP 批量导入
+├── import_gallery.py    # ZIP 批量导入
+└── entrypoint.sh        # Docker 入口脚本
+
+Dockerfile               # 基于 CUDA 的多阶段构建
+docker-compose.yml       # 容器编排（含 GPU 支持）
 ```
 
 ## 技术栈

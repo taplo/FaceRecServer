@@ -186,3 +186,68 @@ class TestGalleryRepository:
         results = repo.search(sample_embedding, top_k=0)
         assert len(results) == 1
         repo.close()
+
+    def test_person_auto_created(self, gallery_dir, sample_embedding):
+        repo = GalleryRepository(gallery_dir, "test_gallery")
+        repo.add(sample_embedding, "张三", employee_id="E001")
+        assert repo.get_person_count() == 1
+        repo.close()
+
+    def test_person_reused_on_same_name(self, gallery_dir, sample_embedding):
+        repo = GalleryRepository(gallery_dir, "test_gallery")
+        repo.add(sample_embedding, "张三", employee_id="E001")
+        repo.add(sample_embedding, "张三", employee_id="E001")
+        assert repo.get_person_count() == 1
+        assert repo.get_count() == 2
+        repo.close()
+
+    def test_list_persons(self, gallery_dir, sample_embedding):
+        repo = GalleryRepository(gallery_dir, "test_gallery")
+        repo.add(sample_embedding, "张三", employee_id="E001")
+        repo.add(sample_embedding, "李四", employee_id="E002")
+        repo.add(sample_embedding, "张三", employee_id="E001")
+        items, total = repo.list_persons()
+        assert total == 2
+        for p in items:
+            if p.name == "张三":
+                assert p.face_count == 2
+            elif p.name == "李四":
+                assert p.face_count == 1
+        repo.close()
+
+    def test_delete_person_cascade(self, gallery_dir, sample_embedding):
+        repo = GalleryRepository(gallery_dir, "test_gallery")
+        repo.add(sample_embedding, "张三", employee_id="E001")
+        repo.add(sample_embedding, "张三", employee_id="E001")
+        persons, _ = repo.list_persons()
+        person_id = persons[0].person_id
+        repo.delete_person(person_id)
+        assert repo.get_count() == 0
+        assert repo.get_person_count() == 0
+        repo.close()
+
+    def test_search_aggregates_by_person(self, gallery_dir):
+        repo = GalleryRepository(gallery_dir, "test_gallery")
+        rng = np.random.default_rng(1)
+        id_embs = []
+        for _ in range(5):
+            emb = rng.random(512).astype(np.float32)
+            emb = emb / np.linalg.norm(emb)
+            id_embs.append(emb)
+        repo.add(id_embs[0], "张三", employee_id="E001")
+        repo.add(id_embs[1], "张三", employee_id="E001")
+        repo.add(id_embs[2], "李四", employee_id="E002")
+        results = repo.search(id_embs[0], top_k=5)
+        names = [r["name"] for r in results]
+        assert names.count("张三") == 1
+        assert names.count("李四") == 1
+        repo.close()
+
+    def test_get_stats_includes_persons(self, gallery_dir, sample_embedding):
+        repo = GalleryRepository(gallery_dir, "test_gallery")
+        repo.add(sample_embedding, "张三")
+        repo.add(sample_embedding, "李四")
+        stats = repo.get_stats()
+        assert stats["total_persons"] == 2
+        assert stats["total_faces"] == 2
+        repo.close()

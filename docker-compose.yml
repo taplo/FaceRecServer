@@ -1,0 +1,27 @@
+services:
+  facerecserver:
+    build: .
+    image: facerecserver:latest
+    container_name: facerecserver
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./gallery:/app/gallery
+    environment:
+      - FACEREC_CONFIG=/app/facerecserver/config.yaml
+      - TZ=Asia/Shanghai
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

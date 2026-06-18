@@ -1,0 +1,9 @@
+﻿uv : [transformers] Disabling PyTorch because PyTorch >= 2.4 is required but found 2.2.2
+    + CategoryInfo          : NotSpecified: ([transformers] ...but found 2.2.2:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilit
+ies can be used.
+D:\projects\FaceRecServer\.venv\Lib\site-packages\timm\models\layers\__init__.py:49: FutureWarning: Importing from timm
+.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)

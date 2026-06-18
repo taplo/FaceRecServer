@@ -9,8 +9,8 @@ class FaceNotFoundError(Exception):
 
 
 class FaceDetector:
-    def __init__(self, min_face_size: int = 40, confidence_threshold: float = 0.95):
-        self._detector = _MTCNN(min_face_size=min_face_size, thresholds=[0.3, 0.4, 0.5], device="cpu")
+    def __init__(self, min_face_size: int = 40, confidence_threshold: float = 0.95, device: str = "cpu"):
+        self._detector = _MTCNN(min_face_size=min_face_size, thresholds=[0.3, 0.4, 0.5], device=device)
         self.confidence_threshold = confidence_threshold
 
     def detect(self, image: np.ndarray | Image.Image):

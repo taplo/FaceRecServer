@@ -7,6 +7,13 @@ class EmbeddingRequest(BaseModel):
     image_url: Optional[str] = None
 
 
+class CompareRequest(BaseModel):
+    image1: Optional[str] = None
+    image1_url: Optional[str] = None
+    image2: Optional[str] = None
+    image2_url: Optional[str] = None
+
+
 class ApiResponse(BaseModel):
     code: int
     message: str
