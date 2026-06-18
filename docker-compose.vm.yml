@@ -5,12 +5,15 @@ services:
     ports:
       - "${PORT:-8001}:8000"
     volumes:
-      - ./models:/app/models
-      - ./gallery:/app/gallery
+      - /home/taplo/FaceRecServer/models:/app/models
+      - /home/taplo/FaceRecServer/gallery:/app/gallery
     environment:
       - TZ=Asia/Shanghai
       - MKL_CBWR=COMPATIBLE
       - MKL_ENABLE_INSTRUCTIONS=AVX
+      - HTTP_PROXY=http://192.168.3.208:8787
+      - HTTPS_PROXY=http://192.168.3.208:8787
+      - NO_PROXY=localhost,127.0.0.1
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]

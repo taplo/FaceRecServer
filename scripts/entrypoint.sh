@@ -37,4 +37,4 @@ else
 fi
 
 echo "[entrypoint] 启动 FaceRecServer"
-exec uv run uvicorn facerecserver.app:create_app --factory --host 0.0.0.0 --port 8000
+exec python -m uvicorn facerecserver.app:create_app --factory --host 0.0.0.0 --port 8000
