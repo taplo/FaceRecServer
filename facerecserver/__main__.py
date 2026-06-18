@@ -1,4 +1,5 @@
 import logging
+import os
 from facerecserver.app import create_app
 from facerecserver.config import load_config
 
@@ -13,7 +14,8 @@ def main():
     config = load_config()
     app = create_app(config)
     import uvicorn
-    uvicorn.run(app, host=config.server.host, port=config.server.port)
+    port = int(os.environ.get("UVICORN_PORT", config.server.port))
+    uvicorn.run(app, host=config.server.host, port=port)
 
 
 if __name__ == "__main__":
