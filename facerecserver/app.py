@@ -17,6 +17,26 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     app.state.start_time = time.time()
     config: AppConfig = app.state.config
+
+    import platform as _platform
+    hw_info = []
+    hw_info.append("device=%s" % config.device)
+    hw_info.append("CPU=%s" % _platform.processor() or "unknown")
+    if hasattr(config, "_cpu_caps"):
+        caps = config._cpu_caps
+        if caps.get("avx2"):
+            hw_info.append("AVX2=yes")
+        elif caps.get("avx"):
+            hw_info.append("AVX=yes MKL_comp=yes")
+        else:
+            hw_info.append("SIMD=none")
+    try:
+        import torch
+        hw_info.append("torch=%s" % torch.__version__)
+    except Exception:
+        pass
+    logger.info("硬件信息: %s", " | ".join(hw_info))
+
     app.state.extractor = None
     app.state.gallery_repo = None
     try:

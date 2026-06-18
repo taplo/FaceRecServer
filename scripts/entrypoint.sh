@@ -1,6 +1,29 @@
 #!/bin/bash
 set -e
 
+# 自动检测 CPU 指令集并设置 MKL 兼容模式
+MKL_FLAGS=$(python3 -c "
+import platform
+if platform.system() == 'Linux':
+    with open('/proc/cpuinfo') as f:
+        flags = f.read().lower()
+    if 'avx2' in flags:
+        print('AVX2')
+    elif 'avx' in flags:
+        print('AVX')
+    else:
+        print('NONE')
+else:
+    print('NONE')
+")
+if [ "$MKL_FLAGS" = "AVX" ]; then
+    export MKL_CBWR=COMPATIBLE
+    export MKL_ENABLE_INSTRUCTIONS=AVX
+    echo "[entrypoint] CPU 不支持 AVX2，已设置 MKL 兼容模式"
+elif [ "$MKL_FLAGS" = "AVX2" ]; then
+    echo "[entrypoint] CPU 支持 AVX2，已启用加速"
+fi
+
 DEFAULT_MODEL="swin_arcface_webface4m_tinyface"
 MODEL_DIR="/app/models/$DEFAULT_MODEL"
 MODEL_FILE="$MODEL_DIR/model.pt"

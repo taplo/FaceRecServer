@@ -1,7 +1,11 @@
 import os
+import platform
+import logging
 import yaml
 from dataclasses import dataclass, field
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -57,7 +61,30 @@ class AppConfig:
     device: str = "cpu"
 
 
+def _detect_cpu_capabilities() -> dict:
+    caps = {"avx2": False, "avx": False, "sse4_2": False}
+    if platform.system() == "Linux" and os.path.isfile("/proc/cpuinfo"):
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("flags"):
+                    flags = line.lower()
+                    caps["avx2"] = "avx2" in flags
+                    caps["avx"] = "avx" in flags
+                    caps["sse4_2"] = "sse4_2" in flags
+                    break
+    if not caps["avx2"] and caps["avx"]:
+        os.environ.setdefault("MKL_CBWR", "COMPATIBLE")
+        os.environ.setdefault("MKL_ENABLE_INSTRUCTIONS", "AVX")
+        logger.info("CPU 不支持 AVX2（仅支持 AVX），已设置 MKL 兼容模式")
+    elif caps["avx2"]:
+        logger.info("CPU 支持 AVX2，已启用加速")
+    else:
+        logger.info("CPU 不支持 AVX 指令集，性能可能受限")
+    return caps
+
+
 def load_config(path: str | None = None) -> AppConfig:
+    cpu_caps = _detect_cpu_capabilities()
     if path is None:
         path = os.environ.get("FACEREC_CONFIG", "")
     if not path:
@@ -99,5 +126,10 @@ def load_config(path: str | None = None) -> AppConfig:
     cfg.gallery.page_size_max = g.get("page_size_max", cfg.gallery.page_size_max)
 
     cfg.device = "cuda" if torch.cuda.is_available() else "cpu"
+    if cfg.device == "cuda":
+        logger.info("CUDA 可用，已启用 GPU 加速 (device=%s)", torch.cuda.get_device_name(0))
+    else:
+        logger.info("CUDA 不可用，使用 CPU")
 
+    cfg._cpu_caps = cpu_caps
     return cfg
