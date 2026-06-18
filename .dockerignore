@@ -17,6 +17,7 @@ AGENTS.md
 README.md
 *.log
 *.bat
-uv.lock
 gallery/
 models/
+
+!uv.lock
