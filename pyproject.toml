@@ -20,6 +20,7 @@ dependencies = [
     "requests>=2.31",
     "faiss-cpu>=1.7",
     "pyiqa>=0.1.15.post2",
+    "transformers>=4,<5",
 ]
 
 [tool.setuptools.packages.find]
