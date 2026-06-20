@@ -19,20 +19,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 RUN pip install --no-cache-dir --default-timeout=300 -e .
 
-# Force-reinstall CPU-only torch (pip may have pulled CUDA version via deps)
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu --force-reinstall
-
 COPY facerecserver/ ./facerecserver/
 COPY scripts/ ./scripts/
 COPY --from=frontend-builder /build/dist ./frontend/dist
 
-# Remove GPU-only packages (pulled by pyiqa, unused on CPU)
-RUN pip uninstall -y bitsandbytes nvidia-cublas-cu12 nvidia-cudnn-cu12 \
-    nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 \
-    nvidia-cusparse-cu12 nvidia-nccl-cu12 nvidia-nvjitlink-cu12 \
-    tensorboard accelerate datasets sentencepiece 2>/dev/null || true
-
-# Remove build dependencies
+# Remove build dependencies (only needed at build time)
 RUN apt-get remove -y gcc g++ && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Clean up Python cache files
