@@ -33,11 +33,11 @@ def check_image_quality(image: np.ndarray, blur_threshold: float = 100.0, min_br
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if image.ndim == 3 else image
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
     if laplacian_var < blur_threshold:
-        return False, f"鍥剧墖妯＄硦 (Laplacian variance={laplacian_var:.1f} < {blur_threshold})"
+        return False, f"图片模糊 (Laplacian variance={laplacian_var:.1f} < {blur_threshold})"
 
     mean_brightness = gray.mean()
     if mean_brightness < min_brightness:
-        return False, f"鍥剧墖杩囨殫 (mean brightness={mean_brightness:.1f} < {min_brightness})"
+        return False, f"图片过暗 (mean brightness={mean_brightness:.1f} < {min_brightness})"
 
     return True, "ok"
 

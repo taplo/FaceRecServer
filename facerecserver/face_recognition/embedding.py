@@ -33,7 +33,7 @@ class FaceEmbeddingExtractor:
         if self.config.preprocess.do_quality_check:
             ok, msg = check_image_quality(image)
             if not ok:
-                raise ValueError(f"璐ㄩ噺妫€鏌ヤ笉鍚堟牸: {msg}")
+                raise ValueError(f"质量检查不合格: {msg}")
 
         bbox, landmarks, conf = self.detector.detect(image)
 
