@@ -2,7 +2,6 @@ import base64
 import io
 import numpy as np
 import cv2
-import torch
 from PIL import Image
 
 
@@ -42,35 +41,9 @@ def check_image_quality(image: np.ndarray, blur_threshold: float = 100.0, min_br
     return True, "ok"
 
 
-_iqa_model = None
-
-
-_iqa_device = "cpu"
-
-
-def _set_iqa_device(device: str):
-    global _iqa_device
-    _iqa_device = device
-
-
-def _get_iqa_model():
-    global _iqa_model
-    if _iqa_model is None:
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            import pyiqa
-            _iqa_model = pyiqa.create_metric("cnniqa", device=_iqa_device)
-    return _iqa_model
-
-
 def estimate_alpha(image: np.ndarray, threshold: float = 0.5) -> float:
-    model = _get_iqa_model()
-    if len(image.shape) == 2:
-        import cv2
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-    tensor = torch.from_numpy(image).permute(2, 0, 1).float().unsqueeze(0) / 255.0
-    with torch.no_grad():
-        score = model(tensor).item()
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if image.ndim == 3 else image
+    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+    score = 1.0 - np.exp(-laplacian_var / 400.0)
     alpha = 0.5 + (score - threshold)
     return max(0.0, min(1.0, alpha))
