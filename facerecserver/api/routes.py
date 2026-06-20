@@ -88,13 +88,29 @@ async def health_check(request: Request):
     import time
     extractor = getattr(request.app.state, "extractor", None)
     repo = getattr(request.app.state, "gallery_repo", None)
+    status = "ok" if extractor else "degraded"
     return {
-        "status": "ok" if extractor else "degraded",
+        "status": status,
         "model_loaded": extractor is not None,
         "gallery_ready": repo is not None,
         "device": request.app.state.config.device if hasattr(request.app.state, "config") else "unknown",
         "uptime_seconds": int(time.time() - request.app.state.start_time) if hasattr(request.app.state, "start_time") else 0,
     }
+
+
+@router.get("/livez")
+async def liveness(request: Request):
+    return {"status": "alive"}
+
+
+@router.get("/readyz")
+async def readiness(request: Request):
+    extractor = getattr(request.app.state, "extractor", None)
+    repo = getattr(request.app.state, "gallery_repo", None)
+    if extractor is None or repo is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"status": "not_ready", "model_loaded": extractor is not None, "gallery_ready": repo is not None})
+    return {"status": "ready", "model_loaded": True, "gallery_ready": True}
 
 
 @router.post("/embedding", response_model=ApiResponse)

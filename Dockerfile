@@ -31,6 +31,9 @@ ENV PYTHONPATH=/app
 ENV FACEREC_CONFIG=/app/facerecserver/config.yaml
 EXPOSE 8000
 
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=120s \
+    CMD python3 -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/v1/livez'); assert r.status==200" || exit 1
+
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
