@@ -40,8 +40,8 @@ class TestApiRoutes:
     def test_gallery_list_no_repo(self, mock_config):
         from facerecserver.app import create_app
         app = create_app(mock_config)
-        app.state.gallery_repo = None
         with TestClient(app) as client:
+            client.app.state.gallery_repo = None
             resp = client.get("/api/v1/gallery")
             assert resp.status_code == 503
 
