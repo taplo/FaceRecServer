@@ -16,9 +16,7 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN set -ex; \
     apt-get update && apt-get install -y --no-install-recommends gcc g++ libxrender-dev; \
-    pip install --no-cache-dir uv; \
-    uv pip install --system --no-cache-dir --default-timeout=300 -e .; \
-    pip uninstall -y uv 2>/dev/null; \
+    pip install --no-cache-dir --default-timeout=300 -e .; \
     apt-get purge -y gcc g++ libxrender-dev; \
     apt-get autoremove --purge -y; \
     rm -rf /var/lib/apt/lists/*; \
