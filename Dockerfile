@@ -14,14 +14,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY pyproject.toml ./
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libxrender-dev \
-    && pip install --no-cache-dir uv \
-    && uv pip install --system --no-cache-dir --default-timeout=300 -e . \
-    && pip uninstall -y uv 2>/dev/null || true \
-    && apt-get purge -y gcc g++ libxrender-dev && apt-get autoremove --purge -y && rm -rf /var/lib/apt/lists/* \
-    && find /usr/local -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true \
-    && find /usr/local -name "*.pyc" -delete 2>/dev/null || true
+RUN set -ex; \
+    apt-get update && apt-get install -y --no-install-recommends gcc g++ libxrender-dev; \
+    pip install --no-cache-dir uv; \
+    uv pip install --system --no-cache-dir --default-timeout=300 -e .; \
+    pip uninstall -y uv 2>/dev/null; \
+    apt-get purge -y gcc g++ libxrender-dev; \
+    apt-get autoremove --purge -y; \
+    rm -rf /var/lib/apt/lists/*; \
+    find /usr/local -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true; \
+    find /usr/local -name "*.pyc" -delete 2>/dev/null || true
 
 COPY facerecserver/ ./facerecserver/
 COPY scripts/ ./scripts/
