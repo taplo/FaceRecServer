@@ -262,6 +262,17 @@ async def delete_person(request: Request, person_id: int):
     return ApiResponse(code=0, message="success", data=None)
 
 
+@router.post("/reindex", response_model=ApiResponse)
+async def reindex_gallery(request: Request):
+    repo = _get_repo(request)
+    try:
+        total = repo.rebuild_index()
+        return ApiResponse(code=0, message="success", data={"total_faces": total})
+    except Exception as e:
+        logger.exception("重建索引失败")
+        return ApiResponse(code=-1, message=f"重建失败: {str(e)}", data=None)
+
+
 @router.delete("", response_model=ApiResponse)
 async def clear_gallery(request: Request):
     repo = _get_repo(request)

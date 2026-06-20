@@ -1,7 +1,6 @@
 <template>
   <div class="recognize">
     <div class="split-panels">
-      <!-- 1:1 Comparison -->
       <div class="panel">
         <div class="panel-header" style="background:#4A90D9">1:1 人脸比对</div>
         <div class="panel-body">
@@ -17,7 +16,9 @@
           </div>
           <input ref="fileInputA" type="file" accept="image/*" hidden @change="onFileA" />
           <input ref="fileInputB" type="file" accept="image/*" hidden @change="onFileB" />
-          <button class="btn btn-compare" @click="doCompare" :disabled="!imgAFile || !imgBFile">开始比对</button>
+          <button class="btn btn-compare" @click="doCompare" :disabled="!imgAFile || !imgBFile || comparing">
+            {{ comparing ? '比对中...' : '开始比对' }}
+          </button>
           <div v-if="compareScore !== null" class="result-box" :class="scoreColor(compareScore)">
             相似度: <strong>{{ compareScore.toFixed(4) }}</strong>
           </div>
@@ -25,7 +26,6 @@
         </div>
       </div>
 
-      <!-- 1:N Search -->
       <div class="panel">
         <div class="panel-header" style="background:#722ed1">1:N 人脸搜索</div>
         <div class="panel-body">
@@ -40,7 +40,9 @@
               <option :value="10">Top-10</option>
               <option :value="20">Top-20</option>
             </select>
-            <button class="btn btn-search" @click="doSearch" :disabled="!searchFile">开始搜索</button>
+            <button class="btn btn-search" @click="doSearch" :disabled="!searchFile || searching">
+              {{ searching ? '搜索中...' : '开始搜索' }}
+            </button>
           </div>
           <div v-if="searchResults.length" class="results">
             <div v-for="(item, i) in searchResults" :key="item.face_id" class="result-item">
@@ -74,8 +76,10 @@ const imgBFile = ref<File | null>(null)
 const searchFile = ref<File | null>(null)
 const compareScore = ref<number | null>(null)
 const compareError = ref('')
+const comparing = ref(false)
 const searchResults = ref<RecognizeItem[]>([])
 const searchError = ref('')
+const searching = ref(false)
 const topK = ref(5)
 
 function triggerUpload(target: string) {
@@ -113,32 +117,24 @@ async function onSearchFile(e: Event) {
 async function doCompare() {
   if (!imgAFile.value || !imgBFile.value) return
   compareError.value = ''
-  const fdA = new FormData()
-  fdA.append('file', imgAFile.value)
-  const fdB = new FormData()
-  fdB.append('file', imgBFile.value)
+  comparing.value = true
+  const fd = new FormData()
+  fd.append('file1', imgAFile.value)
+  fd.append('file2', imgBFile.value)
   try {
-    const registerRes = await api.registerFace(fdB)
-    if (registerRes.code !== 0) {
-      compareError.value = registerRes.message
-      return
-    }
-    const tempFaceId = registerRes.data?.face_id
-    const searchFd = new FormData()
-    searchFd.append('file', imgAFile.value)
-    const searchData = await api.recognize(searchFd, 1)
-    if (tempFaceId) {
-      await api.deleteFace(tempFaceId).catch(() => {})
-    }
-    compareScore.value = searchData.results[0]?.score ?? 0
+    const data = await api.compare(fd)
+    compareScore.value = data.score
   } catch (e: any) {
     compareError.value = e.message || '比对失败'
+  } finally {
+    comparing.value = false
   }
 }
 
 async function doSearch() {
   if (!searchFile.value) return
   searchError.value = ''
+  searching.value = true
   const fd = new FormData()
   fd.append('file', searchFile.value)
   try {
@@ -149,6 +145,8 @@ async function doSearch() {
     }))
   } catch (e: any) {
     searchError.value = e.message || '搜索失败'
+  } finally {
+    searching.value = false
   }
 }
 
@@ -159,8 +157,6 @@ function rankLabel(i: number): string {
 function scoreColor(score: number): string {
   return score >= 0.6 ? 'score-high' : score >= 0.4 ? 'score-mid' : 'score-low'
 }
-
-
 </script>
 
 <style scoped>

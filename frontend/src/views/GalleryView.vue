@@ -3,6 +3,7 @@
     <div class="toolbar">
       <input v-model="searchQuery" placeholder="搜索姓名/工号..." class="search-input" @keyup.enter="loadFaces(1)" />
       <button class="btn btn-primary" @click="showRegister = true">+ 注册人脸</button>
+      <button class="btn btn-outline" @click="showBatch = true">批量导入</button>
       <button class="btn btn-danger-outline" @click="confirmClear">清空底库</button>
     </div>
 
@@ -43,23 +44,49 @@
       </div>
     </div>
 
-    <!-- Register dialog -->
-    <div class="modal-overlay" v-if="showRegister" @click.self="showRegister = false">
-      <div class="modal">
-        <h3>注册人脸</h3>
-        <p class="subtitle">支持 JPG / PNG 格式</p>
-        <div class="upload-area" @click="fileInput?.click()">
-          <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
-          <span v-else class="upload-hint">点击选择图片</span>
+    <Modal :show="showRegister" title="注册人脸" @close="showRegister = false">
+      <p class="subtitle">支持 JPG / PNG 格式</p>
+      <div class="form-row">
+        <div class="form-field">
+          <label>姓名</label>
+          <input v-model="regName" placeholder="输入姓名" class="form-input" />
         </div>
-        <input ref="fileInput" type="file" accept="image/*" hidden @change="onFileSelect" />
-        <div class="modal-actions" v-if="registerFile">
-          <button class="btn btn-primary" @click="registerFace">确认注册</button>
-          <button class="btn" @click="showRegister = false">取消</button>
+        <div class="form-field">
+          <label>工号</label>
+          <input v-model="regEmpId" placeholder="选填" class="form-input" />
         </div>
-        <p v-if="registerError" class="error">{{ registerError }}</p>
       </div>
-    </div>
+      <div class="upload-area" @click="fileInput?.click()">
+        <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
+        <span v-else class="upload-hint">点击选择图片</span>
+      </div>
+      <input ref="fileInput" type="file" accept="image/*" hidden @change="onFileSelect" />
+      <template #footer>
+        <button class="btn" @click="showRegister = false">取消</button>
+        <button class="btn btn-primary" @click="registerFace" :disabled="!registerFile">确认注册</button>
+      </template>
+    </Modal>
+
+    <Modal :show="showBatch" title="批量导入" @close="showBatch = false">
+      <p class="subtitle">上传 ZIP 压缩包，文件名格式: <code>姓名-工号.jpg</code></p>
+      <div class="batch-upload-area" @click="zipInput?.click()">
+        <span v-if="!batchFile" class="upload-hint">点击选择 ZIP 文件</span>
+        <div v-else class="batch-file-info">
+          <span class="batch-icon">📦</span>
+          <span>{{ batchFile.name }} ({{ (batchFile.size / 1024 / 1024).toFixed(1) }} MB)</span>
+        </div>
+      </div>
+      <input ref="zipInput" type="file" accept=".zip" hidden @change="onZipSelect" />
+      <div v-if="batchProgress" class="batch-progress">
+        <p>{{ batchProgress }}</p>
+      </div>
+      <template #footer>
+        <button class="btn" @click="showBatch = false">取消</button>
+        <button class="btn btn-primary" @click="doBatchImport" :disabled="!batchFile || batchImporting">
+          {{ batchImporting ? '导入中...' : '开始导入' }}
+        </button>
+      </template>
+    </Modal>
   </div>
 </template>
 
@@ -68,6 +95,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '@/api/client'
 import type { FaceRecord } from '@/types'
 import Pagination from '@/components/Pagination.vue'
+import Modal from '@/components/Modal.vue'
 
 const faces = ref<FaceRecord[]>([])
 const selectedFace = ref<FaceRecord | null>(null)
@@ -75,11 +103,19 @@ const page = ref(1)
 const total = ref(0)
 const pageSize = 20
 const searchQuery = ref('')
+
 const showRegister = ref(false)
 const registerFile = ref<File | null>(null)
 const previewUrl = ref('')
-const registerError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+const regName = ref('')
+const regEmpId = ref('')
+
+const showBatch = ref(false)
+const batchFile = ref<File | null>(null)
+const zipInput = ref<HTMLInputElement | null>(null)
+const batchImporting = ref(false)
+const batchProgress = ref('')
 
 onMounted(() => loadFaces(1))
 
@@ -106,18 +142,22 @@ function onFileSelect(e: Event) {
 
 async function registerFace() {
   if (!registerFile.value) return
-  registerError.value = ''
   const fd = new FormData()
   fd.append('file', registerFile.value)
+  if (regName.value) fd.append('name', regName.value)
+  else regName.value = registerFile.value.name.replace(/\.[^.]+$/, '')
+  if (regEmpId.value) fd.append('employee_id', regEmpId.value)
   try {
     const res = await api.registerFace(fd)
-    if (res.code !== 0) { registerError.value = res.message; return }
+    if (res.code !== 0) { alert(res.message); return }
     showRegister.value = false
     registerFile.value = null
     previewUrl.value = ''
+    regName.value = ''
+    regEmpId.value = ''
     loadFaces(1)
   } catch (e: any) {
-    registerError.value = e.message
+    alert(e.message)
   }
 }
 
@@ -137,6 +177,37 @@ async function confirmClear() {
   loadFaces(1)
 }
 
+function onZipSelect(e: Event) {
+  const input = e.target as HTMLInputElement
+  batchFile.value = input.files?.[0] || null
+  batchProgress.value = ''
+}
+
+async function doBatchImport() {
+  if (!batchFile.value) return
+  batchImporting.value = true
+  batchProgress.value = '上传中...'
+  const fd = new FormData()
+  fd.append('file', batchFile.value)
+  try {
+    const res = await api.registerFaceZip(fd)
+    if (res.code !== 0) { batchProgress.value = `导入失败: ${res.message}`; return }
+    const data = res.data
+    batchProgress.value = `导入完成: 成功 ${data.succeeded} 条, 失败 ${data.failed} 条`
+    if (data.failures?.length) {
+      batchProgress.value += ` (详情见服务器日志)`
+    }
+    showBatch.value = false
+    batchFile.value = null
+    batchProgress.value = ''
+    loadFaces(1)
+  } catch (e: any) {
+    batchProgress.value = `导入失败: ${e.message}`
+  } finally {
+    batchImporting.value = false
+  }
+}
+
 function formatTime(iso: string): string {
   if (!iso) return '--'
   const d = new Date(iso)
@@ -145,8 +216,8 @@ function formatTime(iso: string): string {
 </script>
 
 <style scoped>
-.toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
-.search-input { flex: 1; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.search-input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; }
 .content-split { display: flex; gap: 16px; }
 .detail-panel { width: 240px; background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); flex-shrink: 0; }
 .detail-header { display: flex; gap: 12px; margin-bottom: 12px; }
@@ -161,20 +232,27 @@ tr { cursor: pointer; }
 td, th { padding: 8px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
 th { font-weight: 600; color: #555; }
 .empty { text-align: center; color: #bbb; padding: 40px !important; }
-.btn { padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 4px; background: #fff; font-size: 13px; }
+.btn { padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 4px; background: #fff; font-size: 13px; cursor: pointer; }
+.btn:disabled { opacity: 0.5; cursor: default; }
 .btn-primary { background: #4A90D9; color: #fff; border-color: #4A90D9; }
 .btn-danger { background: #ff4d4f; color: #fff; border-color: #ff4d4f; }
 .btn-danger-outline { color: #ff4d4f; border-color: #ff4d4f; background: #fff; }
 .btn-danger-text { color: #ff4d4f; background: none; border: none; padding: 4px 8px; }
+.btn-outline { color: #555; border-color: #d9d9d9; background: #fff; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal { background: #fff; border-radius: 8px; padding: 24px; min-width: 400px; }
-.modal h3 { margin-bottom: 4px; }
-.modal .subtitle { font-size: 12px; color: #888; margin-bottom: 12px; }
-.upload-area { border: 2px dashed #d9d9d9; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 12px; }
+.subtitle { font-size: 12px; color: #888; margin-bottom: 12px; }
+.subtitle code { background: #f5f5f5; padding: 1px 5px; border-radius: 3px; }
+.form-row { display: flex; gap: 12px; margin-bottom: 12px; }
+.form-field { flex: 1; }
+.form-field label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+.form-input { width: 100%; padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
+.upload-area { border: 2px dashed #d9d9d9; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 0; }
 .upload-area:hover { border-color: #4A90D9; }
 .preview-img { max-height: 200px; max-width: 100%; }
 .upload-hint { color: #bbb; font-size: 14px; }
-.modal-actions { display: flex; gap: 8px; }
-.error { color: #ff4d4f; font-size: 12px; margin-top: 8px; }
+.batch-upload-area { border: 2px dashed #d9d9d9; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; }
+.batch-upload-area:hover { border-color: #4A90D9; }
+.batch-file-info { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
+.batch-icon { font-size: 24px; }
+.batch-progress { margin-top: 8px; font-size: 13px; color: #555; }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <div class="settings">
     <section class="section">
-      <h3>🧠 模型管理</h3>
+      <h3>模型管理</h3>
       <div class="field">
         <label>当前模型</label>
         <select v-model="currentModel" disabled>
@@ -9,14 +9,14 @@
         </select>
       </div>
       <div class="meta-info">
-        <span>路径: models/swin_arcface_webface4m_tinyface/model.pt</span>
+        <span>路径: models/{{ currentModel }}/model.pt</span>
         <span>维度: 128</span>
         <span>推理: ~500ms/张</span>
       </div>
     </section>
 
     <section class="section">
-      <h3>🔗 底库信息</h3>
+      <h3>底库信息</h3>
       <div class="stats-row" v-if="stats">
         <div class="stat-item">
           <span class="stat-key">底库总数</span>
@@ -35,13 +35,13 @@
       <div class="actions">
         <div class="btn-group">
           <button class="btn btn-warning" @click="rebuildIndex">重建索引</button>
-          <button class="btn btn-danger" @click="doClear">清空底库</button>
+          <button class="btn btn-danger" @click="confirmClear = true">清空底库</button>
         </div>
       </div>
     </section>
 
     <section class="section">
-      <h3>ℹ️ 关于</h3>
+      <h3>关于</h3>
       <div class="about-info">
         <div class="stat-item"><span class="stat-key">后端版本</span><span>v0.1.0</span></div>
         <div class="stat-item"><span class="stat-key">运行设备</span><span>{{ stats?.server.device || '--' }}</span></div>
@@ -49,6 +49,21 @@
         <div class="stat-item" style="margin-top:8px;font-size:11px;color:#bbb">基于 PETALface (WACV 2025) 算法构建</div>
       </div>
     </section>
+
+    <Modal :show="confirmClear" title="确认清空" @close="confirmClear = false">
+      <p>确认清空整个底库？此操作不可恢复！</p>
+      <template #footer>
+        <button class="btn" @click="confirmClear = false">取消</button>
+        <button class="btn btn-danger" @click="doClear">确认清空</button>
+      </template>
+    </Modal>
+
+    <Modal :show="showReindexResult" title="重建索引" @close="showReindexResult = false">
+      <p>{{ reindexMessage }}</p>
+      <template #footer>
+        <button class="btn btn-primary" @click="showReindexResult = false">确定</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
@@ -56,10 +71,14 @@
 import { ref, onMounted } from 'vue'
 import { api } from '@/api/client'
 import type { StatsData } from '@/types'
+import Modal from '@/components/Modal.vue'
 
 const currentModel = ref('swin_arcface_webface4m_tinyface')
 const stats = ref<StatsData | null>(null)
 const loading = ref(true)
+const confirmClear = ref(false)
+const showReindexResult = ref(false)
+const reindexMessage = ref('')
 
 onMounted(async () => {
   try { stats.value = await api.getStats() } catch {}
@@ -72,15 +91,23 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`
 }
 
-function rebuildIndex() {
-  alert('重建索引功能需重启服务器生效。请手动重启: python -m facerecserver')
+async function rebuildIndex() {
+  reindexMessage.value = '正在重建索引...'
+  showReindexResult.value = true
+  try {
+    const res = await api.rebuildIndex()
+    reindexMessage.value = `索引重建完成！共 ${res.total_faces} 条记录`
+    stats.value = await api.getStats()
+  } catch (e: any) {
+    reindexMessage.value = `重建失败: ${e.message}`
+  }
 }
 
 async function doClear() {
-  if (!confirm('确认清空整个底库？此操作不可恢复！')) return
   try {
     await api.clearGallery()
-    alert('底库已清空')
+    confirmClear.value = false
+    stats.value = await api.getStats()
   } catch (e) {
     alert('清空失败')
   }
@@ -100,6 +127,7 @@ async function doClear() {
 .actions { display: flex; gap: 8px; }
 .btn-group { display: flex; gap: 8px; }
 .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.btn-primary { background: #4A90D9; color: #fff; }
 .btn-warning { background: #faad14; color: #fff; }
 .btn-danger { background: #ff4d4f; color: #fff; }
 .about-info { display: flex; flex-direction: column; gap: 4px; }

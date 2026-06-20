@@ -81,6 +81,10 @@ class GalleryRepository:
             self._conn.execute("ALTER TABLE faces ADD COLUMN person_id INTEGER REFERENCES persons(id)")
         except sqlite3.OperationalError:
             pass
+        try:
+            self._conn.execute("ALTER TABLE faces ADD COLUMN embedding BLOB")
+        except sqlite3.OperationalError:
+            pass
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_face_id ON faces(face_id)
         """)
@@ -125,6 +129,34 @@ class GalleryRepository:
     def _save_index(self) -> None:
         faiss.write_index(self._index, self.index_path)
 
+    def rebuild_index(self) -> int:
+        rows = self._conn.execute(
+            "SELECT id, embedding FROM faces WHERE embedding IS NOT NULL"
+        ).fetchall()
+        if not rows:
+            self._index = faiss.IndexIDMap(faiss.IndexFlatIP(self.DIM))
+            self._save_index()
+            return 0
+        index = faiss.IndexIDMap(faiss.IndexFlatIP(self.DIM))
+        ids = []
+        vecs = []
+        for row_id, blob in rows:
+            vec = np.frombuffer(blob, dtype=np.float32).copy()
+            if vec.shape[0] != self.DIM:
+                continue
+            vecs.append(vec)
+            ids.append(row_id)
+        if vecs:
+            vectors = np.stack(vecs).astype(np.float32)
+            norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+            norms[norms == 0] = 1
+            vectors = vectors / norms
+            index.add_with_ids(vectors, np.array(ids, dtype=np.int64))
+        self._index = index
+        self._save_index()
+        logger.info("重建索引完成: %d 条记录", len(ids))
+        return len(ids)
+
     def get_or_create_person(self, name: str, employee_id: str = "") -> int:
         row = self._conn.execute(
             "SELECT id FROM persons WHERE name = ? AND employee_id = ?",
@@ -161,9 +193,10 @@ class GalleryRepository:
             img_pil.save(save_path, "JPEG", quality=85)
             image_path = f"faces/{face_id}.jpg"
 
+        emb_blob = normalized.astype(np.float32).tobytes()
         cursor = self._conn.execute(
-            "INSERT INTO faces (face_id, name, employee_id, person_id, created_at, image_path) VALUES (?, ?, ?, ?, ?, ?)",
-            (face_id, name, employee_id, person_id, now, image_path),
+            "INSERT INTO faces (face_id, name, employee_id, person_id, created_at, image_path, embedding) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (face_id, name, employee_id, person_id, now, image_path, emb_blob),
         )
         faiss_id = cursor.lastrowid
         self._index.add_with_ids(normalized.reshape(1, -1).astype(np.float32), np.array([faiss_id]))

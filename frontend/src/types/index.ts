@@ -38,3 +38,7 @@ export interface StatsData {
     device: string
   }
 }
+
+export interface ReindexResult {
+  total_faces: number
+}

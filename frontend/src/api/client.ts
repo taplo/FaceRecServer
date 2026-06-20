@@ -1,4 +1,4 @@
-import type { ApiResponse, GalleryListData, RecognizeItem, StatsData } from '@/types'
+import type { ApiResponse, GalleryListData, RecognizeItem, StatsData, ReindexResult } from '@/types'
 
 const BASE = '/api/v1'
 
@@ -43,4 +43,6 @@ export const api = {
     if (json.code !== 0) throw new Error(json.message)
     return json.data
   },
+
+  rebuildIndex: () => request<ReindexResult>('/gallery/reindex', { method: 'POST' }),
 }
