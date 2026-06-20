@@ -5,7 +5,7 @@ from facerecserver.face_detection.detector import FaceDetector, FaceNotFoundErro
 from facerecserver.face_detection.aligner import align_face
 from facerecserver.face_recognition.model import load_model
 from facerecserver.face_recognition.utils import (
-    load_image, base64_to_image, check_image_quality, estimate_alpha, _set_iqa_device,
+    load_image, base64_to_image, check_image_quality, estimate_alpha,
 )
 from facerecserver.config import AppConfig
 
@@ -18,7 +18,6 @@ class FaceEmbeddingExtractor:
             confidence_threshold=config.detection.confidence,
             device=config.device,
         )
-        _set_iqa_device(config.device)
         self.model = load_model(
             model_path=config.model.path,
             model_name=config.model.name,

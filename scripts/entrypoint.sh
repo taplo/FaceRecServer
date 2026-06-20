@@ -30,7 +30,7 @@ MODEL_FILE="$MODEL_DIR/model.pt"
 
 if [ ! -f "$MODEL_FILE" ]; then
     echo "[entrypoint] 模型未找到，开始下载: $DEFAULT_MODEL"
-    uv run python scripts/download_model.py --model "$DEFAULT_MODEL" --output-dir /app/models
+    python3 scripts/download_model.py --model "$DEFAULT_MODEL" --output-dir /app/models
     echo "[entrypoint] 模型下载完成"
 else
     echo "[entrypoint] 模型已存在: $MODEL_FILE"

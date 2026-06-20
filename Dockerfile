@@ -12,15 +12,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev \
     gcc g++ \
     && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 RUN pip install --no-cache-dir --default-timeout=300 -e .
 
+# Force-reinstall CPU-only torch (pip may have pulled CUDA version via deps)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu --force-reinstall
+
 COPY facerecserver/ ./facerecserver/
 COPY scripts/ ./scripts/
 COPY --from=frontend-builder /build/dist ./frontend/dist
+
+# Remove GPU-only packages (pulled by pyiqa, unused on CPU)
+RUN pip uninstall -y bitsandbytes nvidia-cublas-cu12 nvidia-cudnn-cu12 \
+    nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 \
+    nvidia-cusparse-cu12 nvidia-nccl-cu12 nvidia-nvjitlink-cu12 \
+    tensorboard accelerate datasets sentencepiece 2>/dev/null || true
+
+# Remove build dependencies
+RUN apt-get remove -y gcc g++ && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+# Clean up Python cache files
+RUN find /usr/local -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+RUN find /usr/local -name "*.pyc" -delete 2>/dev/null || true
 
 ENV PYTHONPATH=/app
 ENV FACEREC_CONFIG=/app/facerecserver/config.yaml
