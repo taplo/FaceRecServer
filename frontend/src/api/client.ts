@@ -38,10 +38,11 @@ export const api = {
   },
 
   compare: async (formData: FormData): Promise<{ score: number }> => {
-    const res = await fetch(`${BASE}/embedding`, { method: 'POST', body: formData })
+    const res = await fetch(`${BASE}/compare`, { method: 'POST', body: formData })
     const json = await res.json()
     if (json.code !== 0) throw new Error(json.message)
-    return json.data
+    const data = json.data
+    return { score: data.similarity ?? data.score ?? 0 }
   },
 
   rebuildIndex: () => request<ReindexResult>('/gallery/reindex', { method: 'POST' }),
