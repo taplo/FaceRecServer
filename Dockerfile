@@ -9,26 +9,23 @@ RUN npm run build
 
 FROM ${BASE_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev \
-    gcc g++ \
+    libgl1 libglib2.0-0 libsm6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv
-
 WORKDIR /app
-COPY pyproject.toml uv.lock* ./
-RUN pip install --no-cache-dir --default-timeout=300 -e .
+COPY pyproject.toml ./
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libxrender-dev \
+    && pip install --no-cache-dir uv \
+    && uv pip install --system --no-cache-dir --default-timeout=300 -e . \
+    && pip uninstall -y uv 2>/dev/null || true \
+    && apt-get purge -y gcc g++ libxrender-dev && apt-get autoremove --purge -y && rm -rf /var/lib/apt/lists/* \
+    && find /usr/local -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local -name "*.pyc" -delete 2>/dev/null || true
 
 COPY facerecserver/ ./facerecserver/
 COPY scripts/ ./scripts/
 COPY --from=frontend-builder /build/dist ./frontend/dist
-
-# Remove build dependencies (only needed at build time)
-RUN apt-get remove -y gcc g++ && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
-
-# Clean up Python cache files
-RUN find /usr/local -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-RUN find /usr/local -name "*.pyc" -delete 2>/dev/null || true
 
 ENV PYTHONPATH=/app
 ENV FACEREC_CONFIG=/app/facerecserver/config.yaml
