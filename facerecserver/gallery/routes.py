@@ -117,7 +117,7 @@ async def add_faces_batch(request: Request, file: UploadFile = File(...)):
 
     temp_dir = tempfile.mkdtemp()
     try:
-        with zipfile.ZipFile(io.BytesIO(contents)) as zf:
+        with zipfile.ZipFile(io.BytesIO(contents), metadata_encoding="gbk") as zf:
             for name in zf.namelist():
                 dest = os.path.abspath(os.path.join(temp_dir, name))
                 if not dest.startswith(os.path.abspath(temp_dir)):
